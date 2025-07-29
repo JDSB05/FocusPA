@@ -1,0 +1,2 @@
+O OPEN WEBUI PRECISA OBRIGATORIAMENTE O PYTHON 11
+https://www.python.org/downloads/release/python-3119/
