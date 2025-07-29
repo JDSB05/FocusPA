@@ -56,7 +56,7 @@ class AccessLog(db.Model):
     action      = db.Column(db.String(100), nullable=False)   # e.g. "login", "view_file"
     resource    = db.Column(db.String(255), nullable=True)    # ex. file path, endpoint
     ip_address  = db.Column(db.String(45), nullable=True)
-    metadata    = db.Column(db.JSON, nullable=True)           # armazena JSON extra (e.g. user agent)
+    meta_info    = db.Column(db.JSON, nullable=True)           # armazena JSON extra (e.g. user agent)
 
     user = db.relationship("User", backref=db.backref("access_logs", lazy="dynamic"))
 
