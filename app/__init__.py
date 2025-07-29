@@ -1,17 +1,34 @@
-import os
-from flask import Flask
-from .extensions import db
+from datetime import timedelta
+from flask import Flask, session
+from flask_login import current_user
 
-def create_app():
+from .config import Config
+from .extensions import db, login_manager
+from .routes import main_bp, auth_bp
+from .model import User
+
+
+def create_app(config_class: type = Config) -> Flask:
+    """Application factory."""
     app = Flask(__name__)
-
-    # ---- Aqui é onde "dizes" ao SQLAlchemy para usar o Postgres ----
-    app.config["SQLALCHEMY_DATABASE_URI"] = os.environ.get(
-        "DATABASE_URL",
-        "postgresql://focuspa:123456@localhost:5432/focus_db"
-    )
-    app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
+    app.config.from_object(config_class)
 
     db.init_app(app)
+    login_manager.init_app(app)
+    login_manager.login_view = 'auth.login'
+
+    @login_manager.user_loader
+    def load_user(user_id: str):
+        return User.query.get(int(user_id))
+
+    app.permanent_session_lifetime = timedelta(minutes=30)
+
+    @app.before_request
+    def refresh_session():
+        if current_user.is_authenticated:
+            session.permanent = True
+
+    app.register_blueprint(auth_bp)
+    app.register_blueprint(main_bp)
 
     return app

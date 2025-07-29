@@ -1,0 +1,12 @@
+{% extends 'layout.html' %}
+{% block title %}Registo{% endblock %}
+{% block content %}
+<h1>Registar</h1>
+<form method="post">
+  <label>Utilizador:<input type="text" name="username"></label><br>
+  <label>Email:<input type="email" name="email"></label><br>
+  <label>Senha:<input type="password" name="password"></label><br>
+  <button type="submit">Registar</button>
+</form>
+<p>Já tem conta? <a href="{{ url_for('auth.login') }}">Entre aqui</a></p>
+{% endblock %}

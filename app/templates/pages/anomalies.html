@@ -1,0 +1,12 @@
+{% extends 'layout.html' %}
+{% block title %}Anomalias{% endblock %}
+{% block content %}
+<h1>Anomalias</h1>
+<ul>
+  {% for a in anomalies %}
+  <li>{{ a.timestamp }} - {{ a.description }} ({{ a.severity }})</li>
+  {% else %}
+  <li>Nenhuma anomalia registada.</li>
+  {% endfor %}
+</ul>
+{% endblock %}
