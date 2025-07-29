@@ -1,3 +1,4 @@
+
 from datetime import timedelta
 from flask import Flask, session
 from flask_login import current_user
@@ -6,6 +7,7 @@ from .config import Config
 from .extensions import db, login_manager
 from .routes import main_bp, auth_bp
 from .model import User
+
 
 
 def create_app(config_class: type = Config) -> Flask:
