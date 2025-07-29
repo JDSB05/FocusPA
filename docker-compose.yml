@@ -7,4 +7,76 @@ services:
     volumes:
       - ./chroma_data:/chroma/chroma  # persistência dos dados
     environment:
+<<<<<<< Updated upstream
       - IS_PERSISTENT=TRUE
+=======
+      - IS_PERSISTENT=TRUE
+    restart: always
+
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.13.0
+    container_name: elasticsearch
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+    ports:
+      - "9200:9200"
+      - "9300:9300"
+    volumes:
+      - esdata:/usr/share/elasticsearch/data
+    restart: always
+
+  kibana:
+    image: docker.elastic.co/kibana/kibana:8.13.0
+    container_name: kibana
+    ports:
+      - "5601:5601"
+    environment:
+      - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
+    depends_on:
+      - elasticsearch
+    restart: always
+
+  postgres:
+    image: postgres:15
+    container_name: postgres
+    environment:
+      POSTGRES_USER: focuspa
+      POSTGRES_PASSWORD: 123456
+      POSTGRES_DB: focus_db
+    ports:
+      - "5433:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    restart: always
+
+  deepseek:
+    image: ollama/ollama
+    container_name: deepseek
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    restart: always
+    command: serve
+
+  openwebui:
+    image: ghcr.io/open-webui/open-webui:main
+    container_name: openwebui
+    ports:
+      - "3000:8080"
+    environment:
+      - OPENAI_API_KEY=sk-local  # obrigatório, mas pode ser falso
+      - OPENAI_API_BASE=http://deepseek:11434/v1
+    depends_on:
+      - deepseek
+    volumes:
+      - openwebui_data:/app/backend/data
+    restart: always
+
+volumes:
+  esdata:
+  pgdata:
+  ollama_data:
+  openwebui_data:
+>>>>>>> Stashed changes
