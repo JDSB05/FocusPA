@@ -8,7 +8,7 @@
   <li>
     <strong>{{ policy.name }}</strong>
     [<a href="{{ url_for('policy_edit', policy_id=policy.id) }}">editar</a>]
-    <form method="post" action="{{ url_for('main.policy_delete', policy_id=policy.id) }}" style="display:inline;">
+    <form method="post" action="{{ url_for('main.policy_delete', policy_id=policy.id) }}" class="inline-form">
       <button type="submit">apagar</button>
     </form>
   </li>
