@@ -1,0 +1,9 @@
+{% extends 'layout.html' %}
+{% block title %}Políticas{% endblock %}
+{% block content %}
+<h1>Enviar Política</h1>
+<form action="{{ url_for('main.policy_upload') }}" method="post" enctype="multipart/form-data">
+  <input type="file" name="file" required>
+  <button type="submit">Upload</button>
+</form>
+{% endblock %}

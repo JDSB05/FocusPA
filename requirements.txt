@@ -1,1 +1,6 @@
 open-webui
+flask
+flask-login
+flask-sqlalchemy
+elasticsearch
+chromadb

@@ -6,6 +6,8 @@ from flask_login import login_required
 from ..extensions import db
 from ..model import Policy, Anomaly
 from ..services.elastic import es
+from ..services.chroma import collection
+import uuid
 
 
 main_bp = Blueprint('main', __name__)
@@ -27,47 +29,20 @@ def anomalies():
 @main_bp.route('/policies', endpoint='policies')
 @login_required
 def policies():
-    todas = Policy.query.order_by(Policy.name).all()
-    return render_template('pages/policies.html', policies=todas)
+    return render_template('pages/policies.html')
 
 
-@main_bp.route('/policies/new', methods=['GET', 'POST'], endpoint='policy_new')
+@main_bp.route('/policies/upload', methods=['POST'], endpoint='policy_upload')
 @login_required
-def policy_new():
-    if request.method == 'POST':
-        policy = Policy(
-            name=request.form.get('name'),  # type: ignore
-            description=request.form.get('description'), # type: ignore
-            content=request.form.get('content') # type: ignore
-        )
-        db.session.add(policy)
-        db.session.commit()
-        flash('Política criada.')
+def policy_upload():
+    arquivo = request.files.get('file')
+    if not arquivo:
+        flash('Nenhum ficheiro enviado.')
         return redirect(url_for('main.policies'))
-    return render_template('pages/policy_form.html')
 
-
-@main_bp.route('/policies/<int:policy_id>/edit', methods=['GET', 'POST'], endpoint='policy_edit')
-@login_required
-def policy_edit(policy_id: int):
-    policy = Policy.query.get_or_404(policy_id)
-    if request.method == 'POST':
-        policy.name = request.form.get('name')
-        policy.description = request.form.get('description')
-        policy.content = request.form.get('content')
-        db.session.commit()
-        flash('Política atualizada.')
-        return redirect(url_for('main.policies'))
-    return render_template('pages/policy_form.html', policy=policy)
-
-
-@main_bp.route('/policies/<int:policy_id>/delete', methods=['POST'], endpoint='policy_delete')
-@login_required
-def policy_delete(policy_id: int):
-    policy = Policy.query.get_or_404(policy_id)
-    db.session.delete(policy)
-    db.session.commit()
-    flash('Política removida.')
+    texto = arquivo.read().decode('utf-8', errors='ignore')
+    collection.add(documents=[texto], ids=[str(uuid.uuid4())])
+    flash('Política carregada para a ChromaDB.')
     return redirect(url_for('main.policies'))
 
 
