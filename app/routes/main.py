@@ -36,9 +36,9 @@ def policies():
 def policy_new():
     if request.method == 'POST':
         policy = Policy(
-            name=request.form.get('name'),
-            description=request.form.get('description'),
-            content=request.form.get('content')
+            name=request.form.get('name'),  # type: ignore
+            description=request.form.get('description'), # type: ignore
+            content=request.form.get('content') # type: ignore
         )
         db.session.add(policy)
         db.session.commit()

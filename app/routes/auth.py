@@ -16,7 +16,7 @@ def login():
         user = User.query.filter_by(username=username).first()
         if user and user.check_password(password):
             login_user(user)
-            log = AccessLog(user_id=user.id, action='login')
+            log = AccessLog(user_id=user.id, action='login') # type: ignore
             db.session.add(log)
             db.session.commit()
             return redirect(url_for('dashboard'))
@@ -33,7 +33,7 @@ def register():
         if User.query.filter((User.username == username) | (User.email == email)).first():
             flash('Utilizador já existe.')
         else:
-            user = User(username=username, email=email)
+            user = User(username=username, email=email) # type: ignore
             user.set_password(password)
             db.session.add(user)
             db.session.commit()
@@ -45,7 +45,7 @@ def register():
 @auth_bp.route('/logout', endpoint='logout')
 @login_required
 def logout():
-    log = AccessLog(user_id=current_user.id, action='logout')
+    log = AccessLog(user_id=current_user.id, action='logout') # type: ignore
     db.session.add(log)
     db.session.commit()
     logout_user()
