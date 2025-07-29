@@ -1,0 +1,10 @@
+version: '3.9'
+services:
+  chromadb:
+    image: chromadb/chroma:latest
+    ports:
+      - "8000:8000"  # porta da API REST
+    volumes:
+      - ./chroma_data:/chroma/chroma  # persistência dos dados
+    environment:
+      - IS_PERSISTENT=TRUE
