@@ -1,4 +1,5 @@
 import os
+from datetime import timedelta
 
 class Config:
     """Base configuration."""
@@ -8,6 +9,7 @@ class Config:
         "postgresql://focuspa:123456@localhost:5432/focus_db",
     )
     SQLALCHEMY_TRACK_MODIFICATIONS = False
+    PERMANENT_SESSION_LIFETIME = timedelta(minutes=30)
 
 class DevelopmentConfig(Config):
     DEBUG = True
