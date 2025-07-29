@@ -3,9 +3,15 @@
 {% block content %}
 <h1>{% if policy %}Editar{% else %}Nova{% endif %} Política</h1>
 <form method="post">
-  <label>Nome:<input type="text" name="name" value="{{ policy.name if policy else '' }}"></label><br>
-  <label>Descrição:<br><textarea name="description">{{ policy.description if policy else '' }}</textarea></label><br>
-  <label>Conteúdo:<br><textarea name="content">{{ policy.content if policy else '' }}</textarea></label><br>
+  <label>Nome:
+    <input type="text" name="name" value="{{ policy.name if policy else '' }}" required>
+  </label>
+  <label>Descrição:
+    <textarea name="description" rows="3">{{ policy.description if policy else '' }}</textarea>
+  </label>
+  <label>Conteúdo:
+    <textarea name="content" rows="5">{{ policy.content if policy else '' }}</textarea>
+  </label>
   <button type="submit">Guardar</button>
 </form>
 {% endblock %}
