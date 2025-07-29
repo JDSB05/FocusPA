@@ -8,12 +8,12 @@
   <body>
     <nav>
       {% if current_user.is_authenticated %}
-        <a href="{{ url_for('dashboard') }}">Início</a>
-        <a href="{{ url_for('anomalies') }}">Anomalias</a>
-        <a href="{{ url_for('policies') }}">Políticas</a>
-        <a href="{{ url_for('access_control') }}">Controlo de Acesso</a>
-        <a href="{{ url_for('forensic') }}">Forense</a>
-        <a href="{{ url_for('compliance') }}">Conformidade</a>
+        <a href="{{ url_for('main.dashboard') }}">Início</a>
+        <a href="{{ url_for('main.anomalies') }}">Anomalias</a>
+        <a href="{{ url_for('main.policies') }}">Políticas</a>
+        <a href="{{ url_for('main.access_control') }}">Controlo de Acesso</a>
+        <a href="{{ url_for('main.forensic') }}">Forense</a>
+        <a href="{{ url_for('main.compliance') }}">Conformidade</a>
         <a href="{{ url_for('auth.logout') }}">Sair</a>
       {% else %}
         <a href="{{ url_for('auth.login') }}">Entrar</a>

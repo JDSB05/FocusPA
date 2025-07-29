@@ -8,9 +8,15 @@ class User(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(80), unique=True, nullable=False)
     email    = db.Column(db.String(120), unique=True, nullable=False)
-    pwd_hash = db.Column(db.String(128), nullable=False)
+    pwd_hash = db.Column(db.String(256), nullable=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    is_active = db.Column(db.Boolean, default=True)
+    get_id = db.Column(db.String(80), unique=True, nullable=True)  # Optional field for user ID retrieval
+    is_authenticated = db.Column(db.Boolean, default=True)  # Flask-Login compatibility
 
+    def get_id(self):
+        return str(self.id)  # Tem de devolver string
+    
     def set_password(self, password):
         self.pwd_hash = generate_password_hash(password)
 

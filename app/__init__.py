@@ -4,7 +4,7 @@ from flask import Flask, session
 from flask_login import current_user
 
 from .config import Config
-fr,  .extensions import db, login_manager, migrate
+from .extensions import db, login_manager, migrate
 from .routes import main_bp, auth_bp
 from .model import User
 

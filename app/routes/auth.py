@@ -19,7 +19,7 @@ def login():
             log = AccessLog(user_id=user.id, action='login') # type: ignore
             db.session.add(log)
             db.session.commit()
-            return redirect(url_for('dashboard'))
+            return redirect(url_for('main.dashboard'))
         flash('Credenciais inválidas.')
     return render_template('pages/login.html')
 
