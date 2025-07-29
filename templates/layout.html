@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="pt">
+  <head>
+    <meta charset="utf-8">
+    <title>{% block title %}FOCUS-PA{% endblock %}</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}">
+  </head>
+  <body>
+    <nav>
+      <a href="{{ url_for('dashboard') }}">Início</a>
+      <a href="{{ url_for('anomalies') }}">Anomalias</a>
+      <a href="{{ url_for('policies') }}">Políticas</a>
+      <a href="{{ url_for('access_control') }}">Controlo de Acesso</a>
+      <a href="{{ url_for('forensic') }}">Forense</a>
+      <a href="{{ url_for('compliance') }}">Conformidade</a>
+      <a href="{{ url_for('logout') }}">Sair</a>
+    </nav>
+    <main>
+      {% with messages = get_flashed_messages() %}
+        {% if messages %}
+          <ul class="flashes">
+            {% for msg in messages %}
+              <li>{{ msg }}</li>
+            {% endfor %}
+          </ul>
+        {% endif %}
+      {% endwith %}
+      {% block content %}{% endblock %}
+    </main>
+  </body>
+</html>
