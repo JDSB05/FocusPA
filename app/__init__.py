@@ -5,7 +5,13 @@ from flask_login import current_user
 
 from .config import Config
 from .extensions import db, login_manager, migrate
-from .routes import main_bp, auth_bp
+from .routes import (
+    main_bp,
+    auth_bp,
+    policy_bp,
+    anomaly_bp,
+    accesslog_bp,
+)
 from .model import User
 
 
@@ -33,6 +39,9 @@ def create_app(config_class: type = Config) -> Flask:
 
     app.register_blueprint(auth_bp)
     app.register_blueprint(main_bp)
+    app.register_blueprint(policy_bp)
+    app.register_blueprint(anomaly_bp)
+    app.register_blueprint(accesslog_bp)
 
     # Criar tabelas se não existirem
     with app.app_context():
