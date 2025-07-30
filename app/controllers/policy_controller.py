@@ -27,7 +27,7 @@ def policy_new():
         file = request.files.get('file')
         name = request.form.get('name')
 
-        if not file or not name:
+        if not file or not name or file.filename is None:
             flash("Nome e ficheiro são obrigatórios.")
             return redirect(request.url)
         
@@ -42,7 +42,7 @@ def policy_new():
             return redirect(request.url)
 
         # PostgreSQL
-        policy = Policy(name=name, content=content)
+        policy = Policy(name=name, content=content) # type: ignore
         db.session.add(policy)
         db.session.commit()
 
