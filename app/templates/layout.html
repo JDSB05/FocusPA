@@ -21,12 +21,13 @@
         <a href="{{ url_for('auth.login') }}">Entrar</a>
       {% endif %}
     </nav>
+    <div class="toast-container" id="toast-container"></div>
     <main>
       {% with messages = get_flashed_messages(with_categories=true) %}
         {% if messages %}
-          <ul class="flashes">
+          <ul class="flashes" id="flash-list" style="display:none;">
             {% for category, msg in messages %}
-              
+
               <li class="{{ category }}">
                 <i>{{ category }}:</i>
                 {{ msg }}
@@ -37,5 +38,17 @@
       {% endwith %}
       {% block content %}{% endblock %}
     </main>
+    <script>
+      const flashList = document.getElementById('flash-list');
+      const toastContainer = document.getElementById('toast-container');
+      if (flashList) {
+        flashList.querySelectorAll('li').forEach(li => {
+          const toast = document.createElement('div');
+          toast.className = 'toast ' + li.className;
+          toast.textContent = li.textContent.trim();
+          toastContainer.appendChild(toast);
+        });
+      }
+    </script>
   </body>
 </html>
