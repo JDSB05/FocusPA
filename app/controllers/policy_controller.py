@@ -1,5 +1,7 @@
+from pydoc import doc
 from flask import render_template, request, redirect, url_for, flash, jsonify
 from werkzeug.utils import secure_filename
+
 from ..extensions import db
 from ..model import Policy
 from ..utils.text_extractor import extract_text_from_file
@@ -64,17 +66,81 @@ def policy_new():
 
 def policy_edit(policy_id: int):
     policy = Policy.query.get_or_404(policy_id)
+    old_name = policy.name  # ← Guarda o nome antigo
+
     if request.method == 'POST':
-        policy.name = request.form.get('name')
-        policy.content = request.form.get('content')
+        new_name = request.form.get('name')
+        policy.name = new_name  # ← Aplica o novo nome
+
+        file = request.files.get('file')
+        if file and file.filename:
+            filename = secure_filename(file.filename)
+            filepath = os.path.join(UPLOAD_FOLDER, filename)
+            file.save(filepath)
+
+            try:
+                content = extract_text_from_file(filepath)
+                policy.content = content
+
+                # Apaga os documentos anteriores no Chroma
+                matching_docs = chroma._collection.get(where={"source": old_name})
+                ids_to_delete = matching_docs.get("ids", [])
+                if ids_to_delete:
+                    chroma._collection.delete(ids=ids_to_delete)
+
+                # Insere com o novo nome
+                doc = Document(page_content=content, metadata={"source": new_name})
+                chroma.add_documents([doc])
+                docs = chroma._collection.get()
+                print(docs['documents'])  # Conteúdo dos documentos
+                print(docs['metadatas'])  # Metadados associados (ex: nome da policy)
+
+            except Exception as e:
+                flash(f"Erro ao extrair texto: {e}", 'Erro')
+                return redirect(request.url)
+        else:
+            # Só o nome mudou → atualiza metadados na Chroma
+            if new_name != old_name:
+                try:
+                    matching_docs = chroma._collection.get(where={"source": old_name})
+                    ids_to_delete = matching_docs.get("ids", [])
+                    if ids_to_delete:
+                        chroma._collection.delete(ids=ids_to_delete)
+
+                        # Reinsere com novo nome, mesmo conteúdo
+                        doc = Document(page_content=policy.content, metadata={"source": new_name})
+                        chroma.add_documents([doc])
+                        docs = chroma._collection.get()
+                        print(docs['documents'])  # Conteúdo dos documentos
+                        print(docs['metadatas'])  # Metadados associados (ex: nome da policy)
+
+                except Exception as e:
+                    flash(f"Erro ao atualizar Chroma: {e}", 'Erro')
+                    return redirect(request.url)
+
         db.session.commit()
         flash('Política atualizada.', 'Sucesso')
         return redirect(url_for('policy.list_policies'))
-    return render_template('pages/policy_form.html', policy=policy)
 
+    return render_template('pages/policy_form.html', policy=policy)
 
 def policy_delete(policy_id: int):
     policy = Policy.query.get_or_404(policy_id)
+
+    try:
+        # 1. Apaga da Chroma pelo "source" (nome da política)
+        matching_docs = chroma._collection.get(where={"source": policy.name})
+        ids_to_delete = matching_docs.get("ids", [])
+        if ids_to_delete:
+            chroma._collection.delete(ids=ids_to_delete)
+            docs = chroma._collection.get()
+            print(docs['documents'])  # Conteúdo dos documentos
+            print(docs['metadatas'])  # Metadados associados (ex: nome da policy)
+
+    except Exception as e:
+        flash(f"Erro ao apagar no Chroma: {e}", 'Erro')
+
+    # 2. Apaga da base de dados PostgreSQL
     db.session.delete(policy)
     db.session.commit()
     flash('Política removida.', 'Sucesso')

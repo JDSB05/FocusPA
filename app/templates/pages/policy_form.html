@@ -7,7 +7,7 @@
     <input type="text" name="name" value="{{ policy.name if policy else '' }}" required>
   </label>
   <label>Ficheiro:
-    <input type="file" name="file" accept=".pdf,.txt,.docx" required>
+    <input type="file" name="file" accept=".pdf,.txt,.docx" {% if not policy %}required{% endif %}>
   </label>
   <button type="submit">Guardar</button>
 </form>
