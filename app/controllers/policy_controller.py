@@ -13,7 +13,6 @@ def policy_new():
     if request.method == 'POST':
         policy = Policy(
             name=request.form.get('name'),  # type: ignore
-            description=request.form.get('description'),  # type: ignore
             content=request.form.get('content')  # type: ignore
         )
         db.session.add(policy)
@@ -27,7 +26,6 @@ def policy_edit(policy_id: int):
     policy = Policy.query.get_or_404(policy_id)
     if request.method == 'POST':
         policy.name = request.form.get('name')
-        policy.description = request.form.get('description')
         policy.content = request.form.get('content')
         db.session.commit()
         flash('Política atualizada.')
@@ -49,7 +47,6 @@ def upload_policy():
         return jsonify({'error': 'Invalid or missing JSON in request'}), 400
     policy = Policy(
         name=policy_data.get('name'),  # type: ignore
-        description=policy_data.get('description'),  # type: ignore
         content=policy_data.get('content')  # type: ignore
     )
     db.session.add(policy)
