@@ -95,7 +95,7 @@ def receber_log():
     log = request.get_json()
     if log is None:
         return jsonify({'error': 'Invalid or missing JSON in request'}), 400
-    log['timestamp'] = datetime.utcnow().isoformat()
+    log['timestamp'] = datetime.now().isoformat()
     res = es.index(index='logs_security', document=log)
     return jsonify(res['result'])
 
@@ -110,3 +110,18 @@ def procurar_logs():
     })
     hits = [hit['_source'] for hit in res['hits']['hits']]
     return jsonify(hits)
+
+@main_bp.route('/uploadpolicy', methods=['POST'], endpoint='upload_policy')
+@login_required
+def upload_policy():
+    policy_data = request.get_json()
+    if not policy_data:
+        return jsonify({'error': 'Invalid or missing JSON in request'}), 400
+    policy = Policy(
+        name=policy_data.get('name'), # type: ignore
+        description=policy_data.get('description'), # type: ignore
+        content=policy_data.get('content') # type: ignore
+    )
+    db.session.add(policy)
+    db.session.commit()
+    return jsonify({'result': 'Policy uploaded successfully'}), 201

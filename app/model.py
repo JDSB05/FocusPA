@@ -9,7 +9,7 @@ class User(db.Model):
     username = db.Column(db.String(80), unique=True, nullable=False)
     email    = db.Column(db.String(120), unique=True, nullable=False)
     pwd_hash = db.Column(db.String(256), nullable=False)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    created_at = db.Column(db.DateTime, default=datetime.now)
     is_active = db.Column(db.Boolean, default=True)
     get_id = db.Column(db.String(80), unique=True, nullable=True)  # Optional field for user ID retrieval
     is_authenticated = db.Column(db.Boolean, default=True)  # Flask-Login compatibility
@@ -21,16 +21,23 @@ class User(db.Model):
         self.pwd_hash = generate_password_hash(password)
 
     def check_password(self, password):
+        if self.pwd_hash is None:
+            return False
         return check_password_hash(self.pwd_hash, password)
 
     def __repr__(self):
         return f"<User {self.username}>"
+    
+    def delete_account(self):
+        self.is_active = False
+        self.pwd_hash = ""
+        self.email = ""
+        self.username = ""
 
 class Policy(db.Model):
     __tablename__ = "policies"
     id = db.Column(db.Integer, primary_key=True)
     name        = db.Column(db.String(150), nullable=False)
-    description = db.Column(db.Text, nullable=True)
     content     = db.Column(db.Text, nullable=False)  # JSON/YAML raw text of policy
     updated_at  = db.Column(db.DateTime, default=datetime.now, onupdate=datetime.now)
 
@@ -49,7 +56,7 @@ class Anomaly(db.Model):
 
     def mark_resolved(self):
         self.resolved = True
-        self.resolved_at = datetime.utcnow()
+        self.resolved_at = datetime.now()
 
     def __repr__(self):
         return f"<Anomaly {self.id} sev={self.severity}>"

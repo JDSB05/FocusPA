@@ -49,6 +49,32 @@ services:
       - pgdata:/var/lib/postgresql/data
     restart: always
 
+  deepseek:
+    image: ollama/ollama
+    container_name: deepseek
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    restart: always
+    command: serve
+
+  openwebui:
+    image: ghcr.io/open-webui/open-webui:main
+    container_name: openwebui
+    ports:
+      - "3000:8080"
+    environment:
+      - OPENAI_API_KEY=sk-local  # obrigatório, mas pode ser falso
+      - OPENAI_API_BASE=http://deepseek:11434/v1
+    depends_on:
+      - deepseek
+    volumes:
+      - openwebui_data:/app/backend/data
+    restart: always
+
 volumes:
   esdata:
   pgdata:
+  ollama_data:
+  openwebui_data:
