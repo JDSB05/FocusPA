@@ -6,9 +6,6 @@
   <label>Nome:
     <input type="text" name="name" value="{{ policy.name if policy else '' }}" required>
   </label>
-  <label>Descrição:
-    <textarea name="description" rows="3">{{ policy.description if policy else '' }}</textarea>
-  </label>
   <label>Conteúdo:
     <textarea name="content" rows="5">{{ policy.content if policy else '' }}</textarea>
   </label>
