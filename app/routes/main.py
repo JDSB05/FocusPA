@@ -11,3 +11,4 @@ main_bp.route('/forensic', endpoint='forensic')(login_required(main_controller.f
 main_bp.route('/compliance', endpoint='compliance')(login_required(main_controller.compliance))
 main_bp.route('/logs', methods=['POST'], endpoint='logs')(login_required(main_controller.receber_log))
 main_bp.route('/search', endpoint='search')(login_required(main_controller.procurar_logs))
+main_bp.route('/chat', endpoint='chat')(login_required(main_controller.chat))

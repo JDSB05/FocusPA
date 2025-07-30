@@ -15,17 +15,22 @@
         <a href="{{ url_for('main.access_control') }}">Controlo de Acesso</a>
         <a href="{{ url_for('main.forensic') }}">Forense</a>
         <a href="{{ url_for('main.compliance') }}">Conformidade</a>
+        <a href="{{ url_for('main.chat') }}">Chat</a>
         <a href="{{ url_for('auth.logout') }}">Sair</a>
       {% else %}
         <a href="{{ url_for('auth.login') }}">Entrar</a>
       {% endif %}
     </nav>
     <main>
-      {% with messages = get_flashed_messages() %}
+      {% with messages = get_flashed_messages(with_categories=true) %}
         {% if messages %}
           <ul class="flashes">
-            {% for msg in messages %}
-              <li>{{ msg }}</li>
+            {% for category, msg in messages %}
+              
+              <li class="{{ category }}">
+                <i>{{ category }}:</i>
+                {{ msg }}
+              </li>
             {% endfor %}
           </ul>
         {% endif %}

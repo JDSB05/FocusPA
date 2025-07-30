@@ -28,7 +28,7 @@ def policy_new():
         name = request.form.get('name')
 
         if not file or not name or file.filename is None:
-            flash("Nome e ficheiro são obrigatórios.")
+            flash("Nome e ficheiro são obrigatórios.", 'Erro')
             return redirect(request.url)
         
         filename = secure_filename(file.filename)
@@ -38,7 +38,7 @@ def policy_new():
         try:
             content = extract_text_from_file(filepath)
         except Exception as e:
-            flash(f"Erro ao extrair texto: {e}")
+            flash(f"Erro ao extrair texto: {e}", 'Erro')
             return redirect(request.url)
 
         # PostgreSQL
@@ -57,7 +57,7 @@ def policy_new():
 
 
 
-        flash('Política criada com sucesso.')
+        flash('Política criada com sucesso.', 'Sucesso')
         return redirect(url_for('policy.list_policies'))
 
     return render_template('pages/policy_form.html')
@@ -68,7 +68,7 @@ def policy_edit(policy_id: int):
         policy.name = request.form.get('name')
         policy.content = request.form.get('content')
         db.session.commit()
-        flash('Política atualizada.')
+        flash('Política atualizada.', 'Sucesso')
         return redirect(url_for('policy.list_policies'))
     return render_template('pages/policy_form.html', policy=policy)
 
@@ -77,7 +77,7 @@ def policy_delete(policy_id: int):
     policy = Policy.query.get_or_404(policy_id)
     db.session.delete(policy)
     db.session.commit()
-    flash('Política removida.')
+    flash('Política removida.', 'Sucesso')
     return redirect(url_for('policy.list_policies'))
 
 
@@ -91,4 +91,4 @@ def upload_policy():
     )
     db.session.add(policy)
     db.session.commit()
-    return jsonify({'result': 'Policy uploaded successfully'}), 201
+    return jsonify({'result': 'Policy uploaded Sucessofully'}), 201

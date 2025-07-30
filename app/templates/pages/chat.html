@@ -1,0 +1,109 @@
+{% extends 'layout.html' %}
+{% block title %}Chat com LLM (RAG){% endblock %}
+{% block content %}
+<style>
+    body {
+        font-family: Arial, sans-serif;
+        background: #f4f4f4;
+        margin: 0;
+        padding: 0;
+    }
+
+    #chat-container {
+        max-width: 800px;
+        margin: 40px auto;
+        background: #fff;
+        border-radius: 8px;
+        padding: 20px;
+        box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+    }
+
+    .message {
+        margin: 10px 0;
+        padding: 10px;
+        border-radius: 6px;
+    }
+
+    .user {
+        background: #d1e7dd;
+        text-align: right;
+    }
+
+    .bot {
+        background: #e2e3e5;
+    }
+
+    #form {
+        display: flex;
+        margin-top: 20px;
+    }
+
+    #input {
+        flex: 1;
+        padding: 10px;
+        font-size: 16px;
+    }
+
+    #send {
+        padding: 10px 20px;
+        font-size: 16px;
+        background-color: #0d6efd;
+        color: white;
+        border: none;
+        cursor: pointer;
+    }
+
+    #send:hover {
+        background-color: #0b5ed7;
+    }
+</style>
+
+<div id="chat-container">
+    <h2>Chat com LLM + Chroma/Elasticsearch</h2>
+    <div id="chat-box"></div>
+
+    <form id="form">
+        <input type="text" id="input" placeholder="Escreve a tua pergunta..." required>
+        <button type="submit" id="send">Enviar</button>
+    </form>
+</div>
+
+<script>
+    const form = document.getElementById('form');
+    const input = document.getElementById('input');
+    const chatBox = document.getElementById('chat-box');
+
+    function addMessage(text, sender) {
+        const msg = document.createElement('div');
+        msg.className = 'message ' + sender;
+        msg.textContent = text;
+        chatBox.appendChild(msg);
+        chatBox.scrollTop = chatBox.scrollHeight;
+    }
+
+    form.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const question = input.value.trim();
+        if (!question) return;
+
+        addMessage(question, 'user');
+        input.value = '';
+
+        try {
+            const response = await fetch('/rag', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ question })
+            });
+
+            const data = await response.json();
+            addMessage(data.answer || '[Erro na resposta]', 'bot');
+
+        } catch (error) {
+            console.error('Erro:', error);
+            addMessage('[Erro ao contactar o servidor]', 'bot');
+        }
+    });
+</script>
+
+{% endblock %}
