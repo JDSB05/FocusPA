@@ -42,7 +42,7 @@ def receber_log():
     log = request.get_json()
     if log is None:
         return jsonify({'error': 'Invalid or missing JSON in request'}), 400
-    log['timestamp'] = datetime.utcnow().isoformat()
+    log['timestamp'] = datetime.now().isoformat()
     res = es.index(index='logs_security', document=log)
     return jsonify(res['result'])
 
