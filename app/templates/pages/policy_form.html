@@ -2,12 +2,12 @@
 {% block title %}Política{% endblock %}
 {% block content %}
 <h1>{% if policy %}Editar{% else %}Nova{% endif %} Política</h1>
-<form method="post">
+<form method="post" enctype="multipart/form-data">
   <label>Nome:
     <input type="text" name="name" value="{{ policy.name if policy else '' }}" required>
   </label>
-  <label>Conteúdo:
-    <textarea name="content" rows="5">{{ policy.content if policy else '' }}</textarea>
+  <label>Ficheiro:
+    <input type="file" name="file" accept=".pdf,.txt,.docx" required>
   </label>
   <button type="submit">Guardar</button>
 </form>
