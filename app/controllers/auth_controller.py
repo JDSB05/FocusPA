@@ -16,7 +16,7 @@ def login():
             db.session.add(log)
             db.session.commit()
             return redirect(url_for('main.dashboard'))
-        flash('Credenciais inválidas.')
+        flash('Credenciais inválidas.', 'Erro')
     return render_template('pages/login.html')
 
 
@@ -25,14 +25,16 @@ def register():
         username = request.form.get('username')
         email = request.form.get('email')
         password = request.form.get('password')
-        if User.query.filter((User.username == username) | (User.email == email)).first():
-            flash('Utilizador já existe.')
+        if not username or not email or not password:
+            flash("Todos os campos são obrigatórios.", 'Erro')
+        if User.query.filter((User.username == username) | (User.email == email)).first():  # type: ignore
+            flash('Utilizador já existe.', 'Erro')
         else:
             user = User(username=username, email=email)  # type: ignore
             user.set_password(password)
             db.session.add(user)
             db.session.commit()
-            flash('Registo concluído. Faça login.')
+            flash('Registo concluído. Faça login.', 'Sucesso')
             return redirect(url_for('auth.login'))
     return render_template('pages/register.html')
 
@@ -42,5 +44,5 @@ def logout():
     db.session.add(log)
     db.session.commit()
     logout_user()
-    flash('Saiu com sucesso.')
+    flash('Saiu com sucesso.', 'Sucesso')
     return redirect(url_for('auth.login'))

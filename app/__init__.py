@@ -11,6 +11,7 @@ from .routes import (
     policy_bp,
     anomaly_bp,
     accesslog_bp,
+    rag_bp,
 )
 from .model import User
 
@@ -42,6 +43,7 @@ def create_app(config_class: type = Config) -> Flask:
     app.register_blueprint(policy_bp)
     app.register_blueprint(anomaly_bp)
     app.register_blueprint(accesslog_bp)
+    app.register_blueprint(rag_bp)
 
     # Criar tabelas se não existirem
     with app.app_context():
