@@ -7,8 +7,11 @@
   {% for policy in policies %}
   <li>
     <strong>{{ policy.name }}</strong>
-    [<a href="{{ url_for('policy.edit', policy_id=policy.id) }}">editar</a>]
-    <form method="post" action="{{ url_for('policy.delete', policy_id=policy.id) }}" class="inline-form">
+    <p> Data criada: {{ policy.created_at }}</p>
+    <form method="get" action="{{ url_for('policy.edit', policy_id=policy.id) }}" style="display: inline;">
+      <button type="submit">Editar</button>
+    </form>
+    <form method="post" action="{{ url_for('policy.delete', policy_id=policy.id) }}" style="display: inline;">
       <button type="submit">apagar</button>
     </form>
   </li>
