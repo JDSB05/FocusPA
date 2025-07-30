@@ -1,6 +1,51 @@
 {% extends 'layout.html' %}
 {% block title %}Dashboard{% endblock %}
 {% block content %}
-<h1>Dashboard</h1>
-<p>Bem-vindo ao painel principal.</p>
+<div class="container">
+  <h1 class="mb-4">Dashboard</h1>
+  <div class="row">
+    <!-- Anomaly count card -->
+    <div class="col-md-4">
+      <div class="card text-white bg-danger mb-3">
+        <div class="card-header">Total Anomalias: </div>
+        <div class="card-body">
+          <h2 class="card-title">{{ total_anomalies }}</h2>
+        </div>
+      </div>
+    </div>
+    <!-- Compliance percentage card -->
+    <div class="col-md-4">
+      <div class="card text-white bg-success mb-3">
+        <div class="card-header">Conformidade: </div>
+        <div class="card-body">
+          <h2 class="card-title">{{ compliance_rate }}%</h2>
+        </div>
+      </div>
+    </div>
+  </div>
+  <!-- Interactive chart -->
+  <div class="row">
+    <div class="col-12">
+      <canvas id="anomalyChart"></canvas>
+    </div>
+  </div>
+</div>
+{% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.3.0/dist/chart.umd.min.js"></script>
+<script>
+// example Chart.js initialization
+var ctx = document.getElementById('anomalyChart').getContext('2d');
+var anomalyChart = new Chart(ctx, {
+    type: 'line',
+    data: {
+        labels: {{ chart_labels|tojson }},
+        datasets: [{
+            label: 'Anomalias por dia',
+            data: {{ chart_data|tojson }}, 
+            fill: false, 
+            tension: 0.1
+        }]
+    }
+});
+</script>
 {% endblock %}

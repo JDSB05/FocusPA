@@ -1,6 +1,19 @@
 {% extends 'layout.html' %}
 {% block title %}Conformidade{% endblock %}
 {% block content %}
-<h1>Conformidade</h1>
-<p>Monitorização de normas e regulamentações.</p>
+<div class="container">
+  <h1>Conformidade</h1>
+  <p>Monitorização de normas e regulamentações.</p>
+  <div class="list-group">
+    {% for policy in policies %}
+    <div class="list-group-item">
+      <h5>{{ policy.name }}</h5>
+      <p>{{ policy.status }}%</p>
+      <div class="progress">
+        <div class="progress-bar" role="progressbar" style='width: {{ policy.status }}%' aria-valuenow="{{ policy.status }}" aria-valuemin="0" aria-valuemax="100"></div>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+</div>
 {% endblock %}
