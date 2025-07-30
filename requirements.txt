@@ -1,9 +1,8 @@
-Flask==2.3.3
-Flask-Login==0.6.3
-Flask-SQLAlchemy==3.1.1
-Flask-Migrate==4.0.5
-Werkzeug==2.3.7
-psycopg2-binary==2.9.7
-chromadb==0.4.15
-elasticsearch==8.9.0
-open-webui
+flask
+flask-login
+flask-sqlalchemy
+flask-migrate
+werkzeug
+psycopg2-binary
+chromadb
+elasticsearch
