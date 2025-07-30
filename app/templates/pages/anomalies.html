@@ -1,12 +1,48 @@
 {% extends 'layout.html' %}
 {% block title %}Anomalias{% endblock %}
 {% block content %}
-<h1>Anomalias</h1>
-<ul>
-  {% for a in anomalies %}
-  <li>{{ a.timestamp }} - {{ a.description }} ({{ a.severity }})</li>
-  {% else %}
-  <li>Nenhuma anomalia registada.</li>
-  {% endfor %}
-</ul>
+<div class="container">
+  <h1>Anomalias</h1>
+  <div class="mb-3">
+    <span>Filtrar por severidade:</span>
+    <select id="severityFilter" class="form-select w-auto d-inline">
+      <option value="">Todas</option>
+      <option value="low">Baixa</option>
+      <option value="medium">Média</option>
+      <option value="high">Alta</option>
+    </select>
+  </div>
+  <table class="table table-striped" id="anomaliesTable">
+    <thead>
+      <tr>
+        <th>Timestamp</th>
+        <th>Fonte</th>
+        <th>Descrição</th>
+        <th>Severidade</th>
+        <th>Resolvido</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for a in anomalies %}
+      <tr data-severity="{{ a.severity }}">
+        <td>{{ a.timestamp }}</td>
+        <td>{{ a.source }}</td>
+        <td>{{ a.description }}</td>
+        <td>{{ a.severity }}</td>
+        <td>{{ 'Sim' if a.resolved else 'Não' }}</td>
+      </tr>
+      {% else %}
+      <tr><td colspan="5">Nenhuma anomalia registada.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+<script>
+document.getElementById('severityFilter').addEventListener('change', function() {
+  var filter = this.value;
+  document.querySelectorAll('#anomaliesTable tbody tr').forEach(function(row) {
+    row.style.display = filter && row.dataset.severity !== filter ? 'none' : '';
+  });
+});
+</script>
 {% endblock %}
