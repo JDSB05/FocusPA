@@ -6,3 +6,7 @@ werkzeug
 psycopg2-binary
 chromadb
 elasticsearch
+langchain_community
+sentence-transformers
+pymupdf
+python-docx
