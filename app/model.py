@@ -40,7 +40,8 @@ class Policy(db.Model):
     name        = db.Column(db.String(150), nullable=False)
     content     = db.Column(db.Text, nullable=False)  # JSON/YAML raw text of policy
     updated_at  = db.Column(db.DateTime, default=datetime.now, onupdate=datetime.now)
-
+    created_at  = db.Column(db.DateTime, default=datetime.now, index=True)
+    
     def __repr__(self):
         return f"<Policy {self.name}>"
 
