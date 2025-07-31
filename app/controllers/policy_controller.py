@@ -1,28 +1,45 @@
-from pydoc import doc
 from flask import render_template, request, redirect, url_for, flash, jsonify
 from werkzeug.utils import secure_filename
+import os
 
 from ..extensions import db
 from ..model import Policy
 from ..utils.text_extractor import extract_text_from_file
-
-import os
-
-from langchain_community.embeddings import HuggingFaceEmbeddings
-from langchain_community.vectorstores import Chroma
-from langchain.schema import Document
+from ..services.chroma_client import chroma
 
 UPLOAD_FOLDER = "uploads"
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
-# Setup Chroma
-embedding_function = HuggingFaceEmbeddings(model_name="sentence-transformers/all-mpnet-base-v2")
-chroma = Chroma(persist_directory="chroma_db", embedding_function=embedding_function)
-
-
 def list_policies():
-    todas = Policy.query.order_by(Policy.name).all()
-    return render_template('pages/policies.html', policies=todas)
+    """Retorna todas as políticas armazenadas."""
+    return render_template('pages/policies.html', policies=Policy.query.order_by(Policy.name).all())
+
+def add_policy(name: str, content: str):
+    """Adiciona uma nova política ao Chroma e à BD."""
+    # Adiciona ao Chroma
+    col = chroma.get_or_create_collection("policies")
+    print(f"[INFO] [Chroma] Adding policy '{name}' to ChromaDB")
+    col.add(documents=[content], metadatas=[{"name": name}], ids=[name])
+    print("[INFO] [Chroma] Policy added to ChromaDB")
+
+    # Adiciona à BD
+    policy = Policy(name=name, content=content) # type: ignore
+    db.session.add(policy)
+    db.session.commit()
+
+def delete_policy(name: str):
+    """Remove uma política do Chroma e da BD com base no nome."""
+    # Apaga do Chroma
+    col = chroma.get_or_create_collection("policies")
+    print(f"[INFO] [Chroma] Deleting policy '{name}' from ChromaDB")
+    col.delete(ids=[name])
+    print("[INFO] [Chroma] Policy deleted from ChromaDB")
+
+    # Apaga da BD
+    policy = Policy.query.filter_by(name=name).first()
+    if policy:
+        db.session.delete(policy)
+        db.session.commit()
 
 def policy_new():
     if request.method == 'POST':
@@ -32,129 +49,97 @@ def policy_new():
         if not file or not name or file.filename is None:
             flash("Nome e ficheiro são obrigatórios.", 'Erro')
             return redirect(request.url)
-        
+
         filename = secure_filename(file.filename)
         filepath = os.path.join(UPLOAD_FOLDER, filename)
         file.save(filepath)
 
         try:
             content = extract_text_from_file(filepath)
+            delete_policy(name)  # Garante que não há duplicados
+            add_policy(name=name, content=content)
+            flash('Política criada com sucesso.', 'Sucesso')
+            return redirect(url_for('policy.list_policies'))
         except Exception as e:
-            flash(f"Erro ao extrair texto: {e}", 'Erro')
+            flash(f"Erro ao processar política: {e}", 'Erro')
             return redirect(request.url)
-
-        # PostgreSQL
-        policy = Policy(name=name, content=content) # type: ignore
-        db.session.add(policy)
-        db.session.commit()
-
-        # Chroma
-        doc = Document(page_content=content, metadata={"source": name})
-        chroma.add_documents([doc])
-        print("Coleções disponíveis:", chroma._collection.name)
-        print("Número de documentos:", chroma._collection.count())
-        docs = chroma._collection.get()
-        print(docs['documents'])  # Conteúdo dos documentos
-        print(docs['metadatas'])  # Metadados associados (ex: nome da policy)
-
-
-
-        flash('Política criada com sucesso.', 'Sucesso')
-        return redirect(url_for('policy.list_policies'))
 
     return render_template('pages/policy_form.html')
 
 def policy_edit(policy_id: int):
     policy = Policy.query.get_or_404(policy_id)
-    old_name = policy.name  # ← Guarda o nome antigo
+    old_name = policy.name
 
     if request.method == 'POST':
         new_name = request.form.get('name')
-        policy.name = new_name  # ← Aplica o novo nome
-
         file = request.files.get('file')
+
         if file and file.filename:
             filename = secure_filename(file.filename)
             filepath = os.path.join(UPLOAD_FOLDER, filename)
             file.save(filepath)
-
             try:
                 content = extract_text_from_file(filepath)
-                policy.content = content
-
-                # Apaga os documentos anteriores no Chroma
-                matching_docs = chroma._collection.get(where={"source": old_name})
-                ids_to_delete = matching_docs.get("ids", [])
-                if ids_to_delete:
-                    chroma._collection.delete(ids=ids_to_delete)
-
-                # Insere com o novo nome
-                doc = Document(page_content=content, metadata={"source": new_name})
-                chroma.add_documents([doc])
-                docs = chroma._collection.get()
-                print(docs['documents'])  # Conteúdo dos documentos
-                print(docs['metadatas'])  # Metadados associados (ex: nome da policy)
-
+                delete_policy(old_name)
+                add_policy(name=new_name, content=content) # type: ignore
+                flash('Política atualizada.', 'Sucesso')
             except Exception as e:
-                flash(f"Erro ao extrair texto: {e}", 'Erro')
+                flash(f"Erro ao atualizar política: {e}", 'Erro')
                 return redirect(request.url)
         else:
-            # Só o nome mudou → atualiza metadados na Chroma
-            if new_name != old_name:
-                try:
-                    matching_docs = chroma._collection.get(where={"source": old_name})
-                    ids_to_delete = matching_docs.get("ids", [])
-                    if ids_to_delete:
-                        chroma._collection.delete(ids=ids_to_delete)
+            try:
+                if new_name != old_name:
+                    delete_policy(old_name)
+                    add_policy(name=new_name, content=policy.content) # type: ignore
+                    flash('Política renomeada com sucesso.', 'Sucesso')
+            except Exception as e:
+                flash(f"Erro ao renomear política: {e}", 'Erro')
+                return redirect(request.url)
 
-                        # Reinsere com novo nome, mesmo conteúdo
-                        doc = Document(page_content=policy.content, metadata={"source": new_name})
-                        chroma.add_documents([doc])
-                        docs = chroma._collection.get()
-                        print(docs['documents'])  # Conteúdo dos documentos
-                        print(docs['metadatas'])  # Metadados associados (ex: nome da policy)
-
-                except Exception as e:
-                    flash(f"Erro ao atualizar Chroma: {e}", 'Erro')
-                    return redirect(request.url)
-
-        db.session.commit()
-        flash('Política atualizada.', 'Sucesso')
         return redirect(url_for('policy.list_policies'))
 
     return render_template('pages/policy_form.html', policy=policy)
 
 def policy_delete(policy_id: int):
     policy = Policy.query.get_or_404(policy_id)
-
     try:
-        # 1. Apaga da Chroma pelo "source" (nome da política)
-        matching_docs = chroma._collection.get(where={"source": policy.name})
-        ids_to_delete = matching_docs.get("ids", [])
-        if ids_to_delete:
-            chroma._collection.delete(ids=ids_to_delete)
-            docs = chroma._collection.get()
-            print(docs['documents'])  # Conteúdo dos documentos
-            print(docs['metadatas'])  # Metadados associados (ex: nome da policy)
-
+        delete_policy(policy.name)
+        flash('Política removida.', 'Sucesso')
     except Exception as e:
-        flash(f"Erro ao apagar no Chroma: {e}", 'Erro')
-
-    # 2. Apaga da base de dados PostgreSQL
-    db.session.delete(policy)
-    db.session.commit()
-    flash('Política removida.', 'Sucesso')
+        flash(f"Erro ao apagar política: {e}", 'Erro')
     return redirect(url_for('policy.list_policies'))
 
-
 def upload_policy():
-    policy_data = request.get_json()
-    if not policy_data:
-        return jsonify({'error': 'Invalid or missing JSON in request'}), 400
-    policy = Policy(
-        name=policy_data.get('name'),  # type: ignore
-        content=policy_data.get('content')  # type: ignore
-    )
-    db.session.add(policy)
-    db.session.commit()
-    return jsonify({'result': 'Policy uploaded Sucessofully'}), 201
+    if request.content_type.startswith('multipart/form-data'):
+        file = request.files.get('file')
+        name = request.form.get('name')
+        print(f"[DEBUG] [Chroma] Uploading policy: name={name}, file={file}")
+
+        if not file or not name or file.filename is None:
+            return jsonify({'error': 'Nome e ficheiro são obrigatórios'}), 400
+
+        filename = secure_filename(file.filename)
+        filepath = os.path.join(UPLOAD_FOLDER, filename)
+        file.save(filepath)
+
+        try:
+            content = extract_text_from_file(filepath)
+            delete_policy(name)
+            add_policy(name=name, content=content)
+            return jsonify({'result': 'Policy uploaded successfully via file'}), 201
+        except Exception as e:
+            return jsonify({'error': f'Failed to process file: {e}'}), 500
+    else:
+        policy_data = request.get_json()
+        if not policy_data:
+            return jsonify({'error': 'Invalid or missing JSON in request'}), 400
+
+        name = policy_data.get('name')
+        content = policy_data.get('content')
+
+        try:
+            delete_policy(name)
+            add_policy(name=name, content=content)
+            return jsonify({'result': 'Policy uploaded successfully'}), 201
+        except Exception as e:
+            return jsonify({'error': f'Failed to upload policy: {e}'}), 500
