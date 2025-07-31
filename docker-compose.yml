@@ -1,4 +1,3 @@
-version: '3.9'
 
 services:
   chromadb:
@@ -7,7 +6,7 @@ services:
     ports:
       - "8000:8000"
     volumes:
-      - ./chroma_data:/chroma/chroma
+      - chroma_data:/chroma/chroma
     environment:
       - IS_PERSISTENT=TRUE
     restart: always
@@ -50,17 +49,18 @@ services:
     restart: always
 
   deepseek:
-    image: ollama/ollama
+    image: ollama/ollama:latest
     container_name: deepseek
     ports:
       - "11434:11434"
     volumes:
       - ollama_data:/root/.ollama
+      - ./entrypoint.sh:/entrypoint.sh:ro
+    entrypoint: ["/bin/bash", "/entrypoint.sh"]
     restart: always
-    command: serve
-
 
 volumes:
   esdata:
   pgdata:
   ollama_data:
+  chroma_data:
