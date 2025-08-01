@@ -56,6 +56,7 @@ def policy_new():
 
         try:
             content = extract_text_from_file(filepath)
+            print(f"[DEBUG] [Chroma] Apagando a política {name}, para garantir que não há duplicados.") 
             delete_policy(name)  # Garante que não há duplicados
             add_policy(name=name, content=content)
             flash('Política criada com sucesso.', 'Sucesso')

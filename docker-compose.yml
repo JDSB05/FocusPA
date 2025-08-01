@@ -1,4 +1,3 @@
-version: '3.9'
 
 services:
   chromadb:
@@ -7,7 +6,7 @@ services:
     ports:
       - "8000:8000"
     volumes:
-      - ./chroma_data:/chroma/chroma
+      - chroma_data:/chroma/chroma
     environment:
       - IS_PERSISTENT=TRUE
     restart: always
@@ -26,7 +25,7 @@ services:
     restart: always
 
   kibana:
-    image: docker.elastic.co/kibana/kibana:8.13.0
+    image: docker.elastic.co/kibana/kibana:9.1.0
     container_name: kibana
     ports:
       - "5601:5601"
@@ -50,17 +49,25 @@ services:
     restart: always
 
   deepseek:
-    image: ollama/ollama
+    image: ollama/ollama:latest
     container_name: deepseek
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    environment:
+      - OLLAMA_FORCE_CPU=false   
     ports:
       - "11434:11434"
     volumes:
       - ollama_data:/root/.ollama
     restart: always
-    command: serve
-
 
 volumes:
   esdata:
   pgdata:
   ollama_data:
+  chroma_data:

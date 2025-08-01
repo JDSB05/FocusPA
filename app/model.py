@@ -48,6 +48,7 @@ class Policy(db.Model):
 class Anomaly(db.Model):
     __tablename__ = "anomalies"
     id = db.Column(db.Integer, primary_key=True)
+    log_id = db.Column(db.String(255), unique=False, nullable=False) 
     timestamp   = db.Column(db.DateTime, default=datetime.now, index=True)
     source      = db.Column(db.String(120), nullable=False)   # ex. "elasticsearch", "chroma"
     description = db.Column(db.Text, nullable=False)
