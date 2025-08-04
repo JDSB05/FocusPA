@@ -1,35 +1,39 @@
 {% extends 'layout.html' %}
+
 {% block title %}Controlo de Acesso{% endblock %}
+
 {% block content %}
 <div class="container">
   <h1>Controlo de Acesso</h1>
-  <p>Gestão de permissões e acessos.</p>
-  <table class="table">
-    <thead>
-      <tr><th>Usuário</th><th>Email</th><th>Ativo</th><th>Selecionar</th></tr>
-    </thead>
-    <tbody>
-      {% for u in users %}
-      <tr>
-        <td>{{ u.username }}</td>
-        <td>{{ u.email }}</td>
-        <td>{{ 'Sim' if u.is_active else 'Não' }}</td>
-        <td><input type="checkbox" name="selected_users" value="{{ u.id }}"></td>
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
-  <button class="btn btn-primary" id="applyChanges">Aplicar Alterações</button>
+
+  {% if logs|length == 0 %}
+    <p>Nenhum registo de acesso disponível.</p>
+  {% else %}
+  <div class="table-responsive">
+    <table class="table-access-log">
+      <thead>
+        <tr>
+          <th>Utilizador</th>
+          <th>Ação</th>
+          <th>Recurso</th>
+          <th>IP</th>
+          <th>Quando</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for log in logs %}
+        <tr>
+          <td>{{ log.user.username if log.user else '—' }}</td>
+          <td>{{ log.action }}</td>
+          <td>{{ log.resource or '-' }}</td>
+          <td>{{ log.ip_address or '-' }}</td>
+          <td>{{ log.timestamp.strftime('%Y‑%m‑%d %H:%M:%S') }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
 </div>
-<script>
-document.getElementById('applyChanges').addEventListener('click', function() {
-  var selected = Array.from(document.querySelectorAll('input[name="selected_users"]:checked'))
-                      .map(cb => cb.value);
-  fetch('/access_control/update', {
-    method: 'POST',
-    headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({users: selected})
-  }).then(() => location.reload());
-});
-</script>
+
 {% endblock %}

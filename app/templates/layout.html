@@ -3,52 +3,54 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>{% block title %}FOCUS-PA{% endblock %}</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}">
+    <title>{% block title %}Dashboard{% endblock %}</title>
+    <link rel="stylesheet" href="/static/css/main.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/toastify-js/src/toastify.min.css">
   </head>
   <body>
     <nav>
-      {% if current_user.is_authenticated %}
-        <a href="{{ url_for('main.dashboard') }}">Início</a>
-        <a href="{{ url_for('anomaly.list_anomalies') }}">Anomalias</a>
-        <a href="{{ url_for('policy.list_policies') }}">Políticas</a>
-        <a href="{{ url_for('main.access_control') }}">Controlo de Acesso</a>
-        <a href="{{ url_for('main.forensic') }}">Forense</a>
-        <a href="{{ url_for('main.compliance') }}">Conformidade</a>
-        <a href="{{ url_for('main.chat') }}">Chat</a>
-        <a href="{{ url_for('auth.logout') }}">Sair</a>
-      {% else %}
-        <a href="{{ url_for('auth.login') }}">Entrar</a>
-      {% endif %}
+      <a href="/">Início</a>
+      <a href="/anomalies/">Anomalias</a>
+      <a href="/policies/">Políticas</a>
+      <a href="/access-control">Controlo de Acesso</a>
+      <a href="/forensic">Forense</a>
+      <a href="/compliance">Conformidade</a>
+      <a href="/chat">Chat</a>
+      <a href="/logout">Sair</a>
     </nav>
-    <div class="toast-container" id="toast-container"></div>
-    <main>
-      {% with messages = get_flashed_messages(with_categories=true) %}
-        {% if messages %}
-          <ul class="flashes" id="flash-list" style="display:none;">
-            {% for category, msg in messages %}
 
-              <li class="{{ category }}">
-                <i>{{ category }}:</i>
-                {{ msg }}
-              </li>
-            {% endfor %}
-          </ul>
-        {% endif %}
-      {% endwith %}
+    <main>
       {% block content %}{% endblock %}
     </main>
+
+    <script src="https://cdn.jsdelivr.net/npm/toastify-js"></script>
     <script>
-      const flashList = document.getElementById('flash-list');
-      const toastContainer = document.getElementById('toast-container');
-      if (flashList) {
-        flashList.querySelectorAll('li').forEach(li => {
-          const toast = document.createElement('div');
-          toast.className = 'toast ' + li.className;
-          toast.textContent = li.textContent.trim();
-          toastContainer.appendChild(toast);
-        });
-      }
+      document.addEventListener('DOMContentLoaded', function() {
+        const flashList = document.getElementById('flash-list');
+        if (flashList) {
+          flashList.querySelectorAll('li').forEach(li => {
+            const category = li.dataset.category;
+            const message  = li.textContent.trim();
+            let bg;
+            switch (category) {
+              case 'Erro':     bg = "#e74c3c"; break;
+              case 'Sucesso':  bg = "#2ecc71"; break;
+              case 'Aviso':    bg = "#f39c12"; break;
+              default:         bg = "#3498db";
+            }
+            Toastify({ text: message,
+                       duration: 5000,
+                       gravity: "top",
+                       position: "right",
+                       style: { fontSize:"25px", padding:"20px 30px", fontFamily:"Tahoma" },
+                       backgroundColor: bg,
+                       stopOnFocus: true
+            }).showToast();
+          });
+        }
+      });
     </script>
+
+    {% block scripts %}{% endblock %}
   </body>
 </html>
