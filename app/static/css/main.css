@@ -74,23 +74,6 @@ button:hover {
   margin: 1rem 0;
 }
 
-.Erro {
-  list-style: none;
-  padding: 1rem;
-  margin-bottom: 1rem;
-  background: #ffe7e7;
-  border: 1px solid #ffcccc;
-  border-radius: 4px;
-}
-
-.Sucesso {
-  list-style: none;
-  padding: 1rem;
-  margin-bottom: 1rem;
-  background: #e7ffe7;
-  border: 1px solid #ccffcc;
-  border-radius: 4px;
-}
 
 .inline-form {
   display: inline;
@@ -136,4 +119,58 @@ button:hover {
   main {
     margin: 1rem;
   }
+}
+
+.table-access-log {
+  width: 100%;
+  border-collapse: collapse;
+  box-shadow: 0 0 8px rgba(0, 0, 0, 0.15);
+  background: #ffffff;
+  overflow: hidden;
+}
+
+/* Cabeçalho fixo com cor consistente */
+.table-access-log thead th {
+  background-color: #343a40;
+  color: #ffffff;
+  font-weight: 600;
+  text-align: left;
+  padding: 0.75rem 1rem;
+}
+
+/* Linhas e células */
+.table-access-log tbody tr {
+  border-bottom: 1px solid #dee2e6;
+}
+
+.table-access-log tbody tr:hover {
+  background-color: #f1f3f5;
+}
+
+.table-access-log td {
+  padding: 0.75rem 1rem;
+  vertical-align: middle;
+  color: #212529;
+}
+
+/* Primeira coluna numerada */
+.table-access-log td:nth-child(1) {
+  font-style: italic;
+  color: #495057;
+  width: 40px;
+}
+
+/* Data & Acção - alinhar uniformemente */
+.table-access-log td:nth-child(6),
+.table-access-log td:nth-child(3) {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* Scroll horizontal em ecrãs pequenos */
+.table-responsive {
+  display: block;
+  width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
 }
