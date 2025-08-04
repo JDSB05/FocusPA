@@ -57,7 +57,7 @@ def compliance():
     return render_template('pages/compliance.html')
 
 def chat():
-    return render_template('pages/chat.html')
+    return render_template('pages/chatt.html')
 
 
 def receber_log():
