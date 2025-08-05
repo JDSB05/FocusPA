@@ -2,7 +2,7 @@
 {% block title %}Políticas{% endblock %}
 {% block content %}
 <h1>Políticas</h1>
-<p><a href="{{ url_for('policy.new') }}">Nova Política</a></p>
+<button onClick="location.href='{{ url_for('policy.new') }}'" class="new-policy-button">Nova Política</button>
 <ul>
   {% for policy in policies %}
   <li>

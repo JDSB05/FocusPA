@@ -4,6 +4,7 @@ html, body {
     min-height: 100vh;
     margin: 0;
     padding: 0;
+    color: #ffffff;
 }
 
 :root {
@@ -449,6 +450,7 @@ p.secondary {
 
 .user.message {
     color: var(--color-text);
+    background: var(--color-user-menu-hover);
 }
 
 .assistant.message {
@@ -468,6 +470,7 @@ p.secondary {
 
 .message-wrapper {
     position: relative;
+    margin-bottom: 5%;
 }
 
 #message::placeholder {
@@ -496,6 +499,7 @@ p.secondary {
 }
 
 .send-button {
+    background-color: #2c2d30 !important;
     position: absolute;
     right: 15px;
     top: 50%;
@@ -510,12 +514,69 @@ p.secondary {
     margin-top: -2px;
 }
 
+.chat-placeholder {
+    text-align: center;
+    color: var(--color-secondary-p);
+    padding: 40px;
+    font-size: 1.1em;
+    font-weight: bold;
+}
+
 button.send-button:hover {
     border: none;
     background: var(--color-gpt3);
     color: var(--color-white);
 }
 
-p {
+.message-text {
     margin: 0 0 1.5em 0;
+}
+
+.table-access-log {
+  width: 100%;
+  border-collapse: collapse;
+  box-shadow: 0 0 8px rgba(0, 0, 0, 0.15);
+  background: #ffffff;
+  overflow: hidden;
+}
+
+.table-access-log thead th {
+  background-color: #343a40;
+  color: #ffffff;
+  font-weight: 600;
+  text-align: left;
+  padding: 0.75rem 1rem;
+}
+
+.table-access-log tbody tr {
+  border-bottom: 1px solid #dee2e6;
+}
+
+.table-access-log tbody tr:hover {
+  background-color: #f1f3f5;
+}
+
+.table-access-log td {
+  padding: 0.75rem 1rem;
+  vertical-align: middle;
+  color: #212529;
+}
+
+.table-access-log td:nth-child(1) {
+  font-style: italic;
+  color: #495057;
+  width: 40px;
+}
+
+.table-access-log td:nth-child(6),
+.table-access-log td:nth-child(3) {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.table-responsive {
+  display: block;
+  width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
 }
