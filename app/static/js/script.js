@@ -61,26 +61,19 @@ document.querySelectorAll(".conversation-button").forEach(button => {
     })
 });
 
-function updateMainMargin() {
+function toggleSidebar() {
   const sidebar = document.getElementById('sidebar');
-  const width = sidebar.classList.contains('hidden')
-    ? '0px'
-    : '300px';
-  sidebar.classList.toggle('', width === '0px');
-  document.documentElement.style.setProperty('--sidebar-width', width);
-  document.getElementById("main").style.marginLeft = "25%";
-  document.getElementById("mySidebar").style.width = "25%";
-  document.getElementById("mySidebar").style.display = "block";
-  document.getElementById("openNav").style.display = 'none';
-  console.log(`Sidebar width set to: ${width}`);
+  sidebar.classList.toggle('hidden');
+  const main = document.getElementById('main');
+  if (sidebar.classList.contains('hidden')) {
+    main.style.marginLeft = '0';
+  } else {
+    main.style.marginLeft = '300px';
+  }
 }
 
 document.addEventListener('DOMContentLoaded', () => {
   const toggleBtn = document.querySelector('.hide-sidebar');
-  toggleBtn.addEventListener('click', () => {
-    document.getElementById('sidebar').classList.toggle('hidden');
-    updateMainMargin();
-  });
-  window.addEventListener('resize', updateMainMargin);
-  updateMainMargin();
+  toggleBtn.addEventListener('click', toggleSidebar);
 });
+
