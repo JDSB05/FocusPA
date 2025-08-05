@@ -1,6 +1,7 @@
 html, body {
     width: 100%;
     height: 100%;
+    min-height: 100vh;
     margin: 0;
     padding: 0;
 }
@@ -32,6 +33,7 @@ html, body {
     --color-user-menu-selected-border: #4a5562;
     --color-border2: #292d32;
     --color-user-message-border: #2f353d;
+    --sidebar-width: 300px;
 }
 
 body {
@@ -42,16 +44,20 @@ body {
 }
 
 #sidebar {
-    position: relative;
+    position: fixed;
+    top: 0;
     left: 0;
+    height: 100vh;
+    width: var(--sidebar-width, 260px); /* valor inicial */
+    transform: translateX(0);
+    z-index: 1000;
+    transition: transform 0.2s ease-in-out;
     background: var(--color-secondary);
-    width: 260px;
     padding: 8px;
     box-sizing: border-box;
     display: flex;
     justify-content: space-between;
     flex-direction: column;
-    transition: all 0.2s ease-in-out;
 }
 
 .float-top {
@@ -61,8 +67,7 @@ body {
 }
 
 #sidebar.hidden {
-    left: -260px;
-    margin-right: -260px;
+    transform: translateX(-100%);
 }
 
 #sidebar.hidden .hide-sidebar {
@@ -91,6 +96,8 @@ button:hover {
     display: flex;
     gap: 10px;
     margin-bottom: 8px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--color-border1);
 }
 
 .sidebar-controls button {
@@ -114,7 +121,6 @@ button:hover {
 }
 
 .conversations {
-    width: calc( 100% + 8px );
     overflow-y: scroll;
 }
 
@@ -309,14 +315,19 @@ i.user-icon {
 }
 
 main {
+    margin-left: var(--sidebar-width, 260px);
+    transition: margin-left 0.2s ease-in-out;
+    padding: 20px;
+    box-sizing: border-box;
     width: 100%;
+    flex-grow: 1;
+    overflow-y: auto;
     margin: 0 auto;
     display: flex;
     flex-direction: column;
     align-content: center;
     justify-content: space-between;
     padding: 0 0 30px 0;
-    box-sizing: border-box;
 }
 
 main .view {
@@ -409,7 +420,6 @@ p.secondary {
 }
 
 .view.conversation-view {
-    display: none;
     overflow-y: auto;
 }
 
