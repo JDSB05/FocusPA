@@ -60,3 +60,27 @@ document.querySelectorAll(".conversation-button").forEach(button => {
         show_view( ".conversation-view" );
     })
 });
+
+function updateMainMargin() {
+  const sidebar = document.getElementById('sidebar');
+  const width = sidebar.classList.contains('hidden')
+    ? '0px'
+    : '300px';
+  sidebar.classList.toggle('', width === '0px');
+  document.documentElement.style.setProperty('--sidebar-width', width);
+  document.getElementById("main").style.marginLeft = "25%";
+  document.getElementById("mySidebar").style.width = "25%";
+  document.getElementById("mySidebar").style.display = "block";
+  document.getElementById("openNav").style.display = 'none';
+  console.log(`Sidebar width set to: ${width}`);
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  const toggleBtn = document.querySelector('.hide-sidebar');
+  toggleBtn.addEventListener('click', () => {
+    document.getElementById('sidebar').classList.toggle('hidden');
+    updateMainMargin();
+  });
+  window.addEventListener('resize', updateMainMargin);
+  updateMainMargin();
+});

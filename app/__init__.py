@@ -62,6 +62,6 @@ def create_app(config_class: type = Config) -> Flask:
             detect_and_create_anomalies()
 
     scheduler.add_job(job_wrapper, 'interval', minutes=60, id='detect_anomalies', replace_existing=True, max_instances=1, next_run_time=datetime.now() + timedelta(seconds=10))
-    scheduler.start() # Descomente para ativar o scheduler
+    #scheduler.start() # Descomente para ativar o scheduler
 
     return app

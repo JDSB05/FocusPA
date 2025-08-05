@@ -1,56 +1,122 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="pt">
-  <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>{% block title %}Dashboard{% endblock %}</title>
-    <link rel="stylesheet" href="/static/css/main.css">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/toastify-js/src/toastify.min.css">
-  </head>
-  <body>
-    <nav>
-      <a href="/">Início</a>
-      <a href="/anomalies/">Anomalias</a>
-      <a href="/policies/">Políticas</a>
-      <a href="/access-control">Controlo de Acesso</a>
-      <a href="/forensic">Forense</a>
-      <a href="/compliance">Conformidade</a>
-      <a href="/chat">Chat</a>
-      <a href="/logout">Sair</a>
-    </nav>
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  
+  <title>{% block title %}Dashboard{% endblock %}</title>
 
-    <main>
-      {% block content %}{% endblock %}
-    </main>
+  <!-- CSS base -->
+  <link rel="stylesheet" href="/static/css/style.css">
 
-    <script src="https://cdn.jsdelivr.net/npm/toastify-js"></script>
-    <script>
-      document.addEventListener('DOMContentLoaded', function() {
-        const flashList = document.getElementById('flash-list');
-        if (flashList) {
-          flashList.querySelectorAll('li').forEach(li => {
-            const category = li.dataset.category;
-            const message  = li.textContent.trim();
-            let bg;
-            switch (category) {
-              case 'Erro':     bg = "#e74c3c"; break;
-              case 'Sucesso':  bg = "#2ecc71"; break;
-              case 'Aviso':    bg = "#f39c12"; break;
-              default:         bg = "#3498db";
-            }
-            Toastify({ text: message,
-                       duration: 5000,
-                       gravity: "top",
-                       position: "right",
-                       style: { fontSize:"25px", padding:"20px 30px", fontFamily:"Tahoma" },
-                       backgroundColor: bg,
-                       stopOnFocus: true
-            }).showToast();
-          });
-        }
-      });
-    </script>
+  <!-- Font Awesome -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css" integrity="sha512-z3gLpd7yknf1YoNbCzqRKc4qyor8gaKU1qmn+CShxbuBusANI9QpRohGBreCFkKxLhei6S9CQXFEbbKuqLg0DA==" crossorigin="anonymous" referrerpolicy="no-referrer" />
 
-    {% block scripts %}{% endblock %}
-  </body>
+  <!-- Toastify -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/toastify-js/src/toastify.min.css">
+</head>
+<body>
+  <!-- Sidebar unificado -->
+  <nav id="sidebar">
+    <div class="float-top">
+      <div class="sidebar-controls">
+        <span class="logo">POLICYSENSE</span>
+        <button class="hide-sidebar" id="hide-sidebar" onclick="updateMainMargin()"><i class="fa fa-chevron-left"></i></button>
+      </div>
+  
+      <!-- Navbar principal dentro do sidebar -->
+      <div>
+        <ul class="conversations">
+          <li>
+            <button class="conversation-button" onclick="location.href='/'"><i class="fa-solid fa-chart-line"></i>
+              Dashboard</button>
+          </li>
+          <li>
+            <button class="conversation-button" onclick="location.href='/anomalies/'"><i
+                class="fa-solid fa-exclamation-triangle"></i> Anomalias</button>
+          </li>
+          <li>
+            <button class="conversation-button" onclick="location.href='/policies/'"><i
+                class="fa-solid fa-file-contract"></i> Políticas</button>
+          </li>
+          <li>
+            <button class="conversation-button" onclick="location.href='/access-control'"><i
+                class="fa-solid fa-user-lock"></i> Controlo de Acesso</button>
+          </li>
+          <li>
+            <button class="conversation-button" onclick="location.href='/forensic'"><i
+                class="fa-solid fa-magnifying-glass"></i> Forense</button>
+          </li>
+          <li>
+            <button class="conversation-button" onclick="location.href='/compliance'"><i
+                class="fa-solid fa-check-circle"></i> Conformidade</button>
+          </li>
+          <li>
+            <button class="conversation-button" onclick="location.href='/chat'"><i class="fa-solid fa-comments"></i>
+              Chat</button>
+          </li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="user-menu">
+      <button>
+        <i class="user-icon">u</i>
+        username
+        <i class="fa fa-ellipsis dots"></i>
+      </button>
+      <ul>
+        <li><button>O meu plano</button></li>
+        <li><button>Instruções personalizadas</button></li>
+        <li><button>Definições</button></li>
+        <li><button onclick="location.href='/logout'">Sair</button></li>
+      </ul>
+    </div>
+  </nav>
+
+  <!-- Conteúdo principal -->
+  <main>
+    {% block content %}
+    {% endblock %}
+  </main>
+
+  <!-- Toastify Flash messages -->
+  <script src="https://cdn.jsdelivr.net/npm/toastify-js"></script>
+  <script>
+    document.addEventListener('DOMContentLoaded', function () {
+      const flashList = document.getElementById('flash-list');
+      if (flashList) {
+        flashList.querySelectorAll('li').forEach(li => {
+          const category = li.dataset.category;
+          const message = li.textContent.trim();
+          let bg;
+          switch (category) {
+            case 'Erro':     bg = "#e74c3c"; break;
+            case 'Sucesso':  bg = "#2ecc71"; break;
+            case 'Aviso':    bg = "#f39c12"; break;
+            default:         bg = "#3498db";
+          }
+          Toastify({
+            text: message,
+            duration: 5000,
+            gravity: "top",
+            position: "right",
+            style: {
+              fontSize: "25px",
+              padding: "20px 30px",
+              fontFamily: "Tahoma"
+            },
+            backgroundColor: bg,
+            stopOnFocus: true
+          }).showToast();
+        });
+      }
+    });
+  </script>
+  <script src="/static/js/script.js"></script>
+  
+  {% block scripts %}
+  {% endblock %}
+</body>
 </html>
