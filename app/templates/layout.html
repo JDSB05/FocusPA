@@ -65,12 +65,21 @@
 
     <div class="user-menu">
       <button>
-        <i class="user-icon">u</i>
-        username
+        <i class="user-icon">
+          {%- if current_user.is_authenticated -%}
+          {{ current_user.username[0]|upper }}
+          {%- else -%}
+          U
+          {%- endif -%}
+        </i>
+        {%- if current_user.is_authenticated -%}
+        {{ current_user.username }}
+        {%- else -%}
+        Convidado
+        {%- endif -%}
         <i class="fa fa-ellipsis dots"></i>
       </button>
       <ul>
-        <li><button>O meu plano</button></li>
         <li><button>Instruções personalizadas</button></li>
         <li><button>Definições</button></li>
         <li><button onclick="location.href='/logout'">Sair</button></li>
@@ -118,7 +127,25 @@
     });
   </script>
   <script src="/static/js/script.js"></script>
-  
+  <script>
+    document.getElementById('login-form').addEventListener('submit', function () {
+      var user = document.querySelector('input[name="username"]').value;
+      localStorage.setItem('username', user);
+    });
+  </script>
+  <script>
+  document.addEventListener('DOMContentLoaded', () => {
+    const storedUser = localStorage.getItem('username');
+    if (storedUser) {
+      const icon = document.querySelector('.user-icon');
+      const btn  = icon.closest('button');
+      // Atualiza a letra no ícone
+      icon.textContent = storedUser.charAt(0).toUpperCase();
+      // Atualiza o texto junto ao ícone
+      btn.childNodes[2].nodeValue = ' ' + storedUser;
+    }
+  });
+</script>
   {% block scripts %}
   {% endblock %}
 </body>
