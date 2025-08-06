@@ -87,6 +87,7 @@ button {
     box-sizing: border-box;
     text-align: left;
     cursor: pointer;
+    width: fit-content;
 }
 
 button:hover {
@@ -325,7 +326,6 @@ main {
   display: flex;
   flex-direction: column;
   align-content: center;
-  justify-content: space-between;
   margin-left: 300px; /* valor inicial com sidebar visível */
 }
 

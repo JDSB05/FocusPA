@@ -4,6 +4,15 @@
 
 {% block styles %}
 <link rel="stylesheet" href="/static/css/style.css">
+<style>
+  .white-bg {
+    background-color: white;
+    padding: 20px;
+    border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  }
+</style>
+
 {% endblock %}
 
 
@@ -31,9 +40,11 @@
     </div>
   </div>
   <!-- Interactive chart -->
-  <div class="row">
-    <div class="col-12">
-      <canvas id="anomalyChart" width="400" height="200"></canvas>
+  <div class="white-bg">
+    <div class="row">
+      <div class="col-12">
+        <canvas id="anomalyChart" width="400" height="200"></canvas>
+      </div>
     </div>
   </div>
 </div>
@@ -57,6 +68,17 @@
       console.log('Labels:', labels, 'Data:', data);
 
       const ctx = document.getElementById('anomalyChart').getContext('2d');
+        const plugin = {
+          id: 'customCanvasBackgroundColor',
+          beforeDraw: (chart, args, options) => {
+            const { ctx } = chart;
+            ctx.save();
+            ctx.globalCompositeOperation = 'destination-over';
+            ctx.fillStyle = options.color || '#99ffff';
+            ctx.fillRect(0, 0, chart.width, chart.height);
+            ctx.restore();
+          }
+        };
       new Chart(ctx, {
         type: 'line',
         data: {
@@ -65,9 +87,26 @@
             label: 'Anomalias por dia',
             data: data,
             fill: false,
-            tension: 0.1
+            tension: 0.1,
+            backgroundColor: 'rgba(75, 192, 192, 0.2)',
+            borderColor: 'rgba(75, 192, 192, 1)'
           }]
-        }
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          scales: {
+            y: {
+              beginAtZero: true
+            }
+          },
+          plugins: {
+            customCanvasBackgroundColor: {
+              color: '#f0f0f0'
+            }
+          }
+        },
+        plugins: [plugin]
       });
     });
   </script>
