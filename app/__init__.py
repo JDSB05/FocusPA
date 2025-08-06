@@ -15,7 +15,7 @@ from .routes import (
     accesslog_bp,
     rag_bp,
 )
-from .model import User
+from .model import User, create_test_anomalies
 
 
 def create_app(config_class: type = Config) -> Flask:
@@ -52,6 +52,7 @@ def create_app(config_class: type = Config) -> Flask:
     # Cria tabelas se não existirem
     with app.app_context():
         db.create_all()
+        create_test_anomalies()
 
     # Scheduler para deteção automática
     scheduler = BackgroundScheduler()

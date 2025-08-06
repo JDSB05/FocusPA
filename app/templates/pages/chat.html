@@ -1,21 +1,30 @@
 {% extends 'layout.html' %}
 {% block title %}Chat com LLM (RAG){% endblock %}
+{% block styles %}
+<style>
+  .chat-container {
+    justify-content: space-between;
+  }
+</style>
+{% endblock %}
 {% block content %}
-<div class="view new-chat-view"></div>
+<div class="chat-container" style="justify-content: space-between; height:100%; display: flex; flex-direction: column;">
+  <div class="view new-chat-view"></div>
 
-<div class="view conversation-view">
+  <div class="view conversation-view">
     <div id="chat-box">
-        <div id="chat-placeholder" class="chat-placeholder">
-            Escreve uma pergunta para começar. O bot irá responder com base nas informações disponíveis nos logs e políticas.
-        </div>
+      <div id="chat-placeholder" class="chat-placeholder">
+        Escreve uma pergunta para começar. O bot irá responder com base nas informações disponíveis nos logs e políticas.
+      </div>
     </div>
-</div>
+  </div>
 
-<div id="message-form">
+  <div id="message-form">
     <form id="form" class="message-wrapper">
-        <input id="message" type="text" placeholder="Escreve a tua pergunta..." required>
-        <button class="send-button" type="submit"><i class="fa fa-paper-plane"></i></button>
+      <input id="message" type="text" placeholder="Escreve a tua pergunta..." required>
+      <button class="send-button" type="submit"><i class="fa fa-paper-plane"></i></button>
     </form>
+  </div>
 </div>
 
 

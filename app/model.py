@@ -77,3 +77,22 @@ class AccessLog(db.Model):
 
     def __repr__(self):
         return f"<AccessLog {self.action} by {self.user_id} at {self.timestamp}>"
+
+def create_test_anomalies():
+    """Função de teste para criar varias anomalias."""
+    from random import choice, randint
+
+    anomalies = []
+    for _ in range(10):
+        anomaly = Anomaly(
+            log_id="test_log_" + str(randint(1, 1000)), # type: ignore
+            source=choice(["elasticsearch", "chroma"]), # type: ignore
+            description="Test anomaly description", # type: ignore
+            severity=choice(["low", "medium", "high"]), # type: ignore
+        )
+        anomalies.append(anomaly)
+    print("Test anomalies created:")
+    for a in anomalies:
+        print(f" - {a}")
+    db.session.bulk_save_objects(anomalies)
+    db.session.commit()

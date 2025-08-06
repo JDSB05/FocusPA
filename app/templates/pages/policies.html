@@ -1,22 +1,48 @@
 {% extends 'layout.html' %}
 {% block title %}Políticas{% endblock %}
+
 {% block content %}
+<style>
+  .new-policy-button {
+    margin-bottom: 20px;
+  }
+
+  .table-button {
+    display: inline-block;
+    margin-right: 10px;
+    background-color: var(--color-main);
+  }
+</style>
 <h1>Políticas</h1>
 <button onClick="location.href='{{ url_for('policy.new') }}'" class="new-policy-button">Nova Política</button>
-<ul>
-  {% for policy in policies %}
-  <li>
-    <strong>{{ policy.name }}</strong>
-    <p> Data criada: {{ policy.created_at }}</p>
-    <form method="get" action="{{ url_for('policy.edit', policy_id=policy.id) }}" style="display: inline;">
-      <button type="submit">Editar</button>
-    </form>
-    <form method="post" action="{{ url_for('policy.delete', policy_id=policy.id) }}" style="display: inline;">
-      <button type="submit">apagar</button>
-    </form>
-  </li>
-  {% else %}
-  <li>Nenhuma política definida.</li>
-  {% endfor %}
-</ul>
+
+<div class="table-responsive" id="anomaliesTable">
+  <table class="table-access-log">
+    <thead>
+      <tr>
+        <th>Nome da Política</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for policy in policies %}
+      <tr>
+        <td>
+          <strong>{{ policy.name }}</strong>
+          <p>Data criada: {{ policy.created_at.strftime('%Y‑%m‑%d %H:%M:%S') }}</p>
+          <form method="get" action="{{ url_for('policy.edit', policy_id=policy.id) }}" style="display: inline;">
+            <button type="submit" class="table-button">Editar</button>
+          </form>
+          <form method="post" action="{{ url_for('policy.delete', policy_id=policy.id) }}" style="display: inline;">
+            <button type="submit" class="table-button">Apagar</button>
+          </form>
+        </td>
+      </tr>
+      {% else %}
+      <tr>
+        <td>Nenhuma política definida.</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
 {% endblock %}
