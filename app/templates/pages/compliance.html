@@ -2,23 +2,55 @@
 {% block title %}Conformidade{% endblock %}
 
 {% block styles %}
-<link rel="stylesheet" href="/static/css/style.css">
+<style>
+  .policy-table {
+    width: 100%;
+    border-collapse: collapse;
+  }
+  .policy-table th, .policy-table td {
+    padding: 8px;
+    border-bottom: 1px solid #ddd;
+  }
+  .progress-container {
+    background: #f0f0f0;
+    border-radius: 4px;
+    overflow: hidden;
+    height: 20px;
+  }
+  .progress-bar {
+    height: 100%;
+    text-align: center;
+    color: #fff;
+    line-height: 20px;
+  }
+</style>
 {% endblock %}
 
 {% block content %}
-<div class="container">
-  <h1>Conformidade</h1>
-  <p>Monitorização de normas e regulamentações.</p>
-  <div class="list-group">
+<h2>Conformidade</h2>
+<p>Monitorização de normas e regulamentações.</p>
+<table class="table-access-log">
+  <thead>
+    <tr>
+      <th>Política</th>
+      <th>Data de criação</th>
+      <th>Conformidade (%)</th>
+    </tr>
+  </thead>
+  <tbody>
     {% for policy in policies %}
-    <div class="list-group-item">
-      <h5>{{ policy.name }}</h5>
-      <p>{{ policy.status }}%</p>
-      <div class="progress">
-        <div class="progress-bar" role="progressbar" style='width: {{ policy.status }}%' aria-valuenow="{{ policy.status }}" aria-valuemin="0" aria-valuemax="100"></div>
-      </div>
-    </div>
+    <tr>
+      <td>{{ policy.name }}</td>
+      <td>{{ policy.created_at.strftime('%Y-%m-%d %H:%M:%S') }}</td>
+      <td>
+        <div class="progress-container">
+          <div class="progress-bar" style="width: {{ compliance_rate }}%; background-color: #007bff;">
+            {{ compliance_rate }}%
+          </div>
+        </div>
+      </td>
+    </tr>
     {% endfor %}
-  </div>
-</div>
+  </tbody>
+</table>
 {% endblock %}

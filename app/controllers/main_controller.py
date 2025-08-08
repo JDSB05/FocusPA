@@ -1,7 +1,8 @@
 from datetime import datetime, timedelta
+from typing import Counter
 from flask import render_template, request, jsonify
 from ..extensions import db
-from ..model import Anomaly, AccessLog
+from ..model import Anomaly, AccessLog, Policy
 from sqlalchemy.orm import joinedload
 
 
@@ -9,43 +10,70 @@ from ..services.elastic import es
 
 
 def dashboard():
-    # 1. Total de anomalias
     total = Anomaly.query.count()
-
-    # 2. Quantas já estão resolvidas
     resolved_count = Anomaly.query.filter_by(resolved=True).count()
-
-    # 3. Taxa de conformidade em percentagem
     compliance_rate = round((resolved_count / total) * 100, 2) if total else 0
 
-    # 4. Preparar dados do gráfico: contagem diária dos últimos 14 dias
+    # Gráfico de linhas (últimos 14 dias)
     end = datetime.utcnow().date()
     start = end - timedelta(days=13)
-    labels = []
-    data   = []
+    labels, data = [], []
     for i in range(14):
         dia = start + timedelta(days=i)
-        conta = Anomaly.query.filter(
-            db.func.date(Anomaly.timestamp) == dia
-        ).count()
+        count = Anomaly.query.filter(db.func.date(Anomaly.timestamp) == dia).count()
         labels.append(dia.isoformat())
-        data.append(conta)
+        data.append(count)
+
+    # Contagem por severidade
+    severities = ['low','medium','high']
+    severity_counts = {s: Anomaly.query.filter_by(severity=s).count() for s in severities}
+
+    # Contagem resolvidas vs pendentes
+    status_counts = {
+        'Resolvidas': resolved_count,
+        'Pendentes': total - resolved_count
+    }
+
+    # Top 5 anomalias mais recentes
+    top_anomalies = (Anomaly.query.order_by(Anomaly.timestamp.desc())
+                     .limit(5)
+                     .all())
 
     return render_template(
         'pages/dashboard.html',
         total_anomalies=total,
         compliance_rate=compliance_rate,
         chart_labels=labels,
-        chart_data=data
+        chart_data=data,
+        severity_counts=severity_counts,
+        status_counts=status_counts,
+        top_anomalies=top_anomalies
     )
 
 def access_control():
     logs = (AccessLog.query
-            .options(joinedload(AccessLog.user)) # type: ignore
+            .options(joinedload(AccessLog.user))  # type: ignore
             .order_by(AccessLog.timestamp.desc())
-            .limit(200)  # limita para não carregar tudo
+            .limit(200)
             .all())
-    return render_template('pages/access_control.html', logs=logs)
+
+    # Contagem de ações
+    action_counts = Counter([log.action for log in logs])
+
+    # Acessos diários (últimos 7 dias)
+    today  = datetime.utcnow().date()
+    dates  = [today - timedelta(days=i) for i in range(6, -1, -1)]
+    daily_counts = []
+    daily_labels = [d.strftime('%Y-%m-%d') for d in dates]
+    for d in dates:
+        count = AccessLog.query.filter(db.func.date(AccessLog.timestamp) == d).count()
+        daily_counts.append(count)
+
+    return render_template('pages/access_control.html',
+                           logs=logs,
+                           action_counts=action_counts,
+                           daily_labels=daily_labels,
+                           daily_counts=daily_counts)
 
 
 
@@ -54,7 +82,14 @@ def forensic():
 
 
 def compliance():
-    return render_template('pages/compliance.html')
+    total = Anomaly.query.count()
+    resolved_count = Anomaly.query.filter_by(resolved=True).count()
+    compliance_rate = round((resolved_count / total) * 100, 2) if total else 0
+
+    policies = Policy.query.order_by(Policy.name).all()
+    return render_template('pages/compliance.html',
+                           policies=policies,
+                           compliance_rate=compliance_rate)
 
 def chat():
     return render_template('pages/chat.html')

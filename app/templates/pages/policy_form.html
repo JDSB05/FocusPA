@@ -1,14 +1,38 @@
 {% extends 'layout.html' %}
 {% block title %}Política{% endblock %}
+
 {% block content %}
-<h1>{% if policy %}Editar{% else %}Nova{% endif %} Política</h1>
-<form method="post" enctype="multipart/form-data">
-  <label>Nome:
+<h2>{% if policy %}Editar{% else %}Nova{% endif %} Política</h2>
+<form method="POST" enctype="multipart/form-data">
+  <div>
+    <label>Nome:</label><br>
     <input type="text" name="name" value="{{ policy.name if policy else '' }}" required>
-  </label>
-  <label>Ficheiro:
-    <input type="file" name="file" accept=".pdf,.txt,.docx" {% if not policy %}required{% endif %}>
-  </label>
+  </div>
+  <div>
+    <label>Ficheiro:</label><br>
+    <input type="file" id="fileInput" name="file" accept=".json,.yaml,.yml,.txt" {% if not policy %}required{% endif %}>
+    <div id="fileInfo" style="margin-top:10px;color:#555;"></div>
+  </div>
   <button type="submit">Guardar</button>
 </form>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  document.getElementById('fileInput').addEventListener('change', function() {
+    const file = this.files[0];
+    const info = document.getElementById('fileInfo');
+    if (file) {
+      const reader = new FileReader();
+      reader.onload = function(e) {
+        const content = e.target.result;
+        const lines   = content.split(/\\r?\\n/).length;
+        info.textContent = `Pré-visualização: ${lines} linhas, ${(file.size/1024).toFixed(2)} KB`;
+      };
+      reader.readAsText(file);
+    } else {
+      info.textContent = '';
+    }
+  });
+</script>
 {% endblock %}
