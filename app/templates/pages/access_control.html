@@ -1,39 +1,115 @@
 {% extends 'layout.html' %}
-
 {% block title %}Controlo de Acesso{% endblock %}
 
+{% block styles %}
+<style>
+  .log-table {
+    width: 100%;
+    border-collapse: collapse;
+  }
+  .log-table th, .log-table td {
+    padding: 8px;
+    border-bottom: 1px solid #ddd;
+  }
+  .search-input {
+    margin-bottom: 10px;
+    padding: 5px;
+    width: 300px;
+  }
+  .chart-container {
+    margin-top: 20px;
+    display: flex;
+    gap: 40px;
+  }
+</style>
+{% endblock %}
+
 {% block content %}
-<div class="container">
-  <h1>Controlo de Acesso</h1>
-
-  {% if logs|length == 0 %}
-    <p>Nenhum registo de acesso disponível.</p>
-  {% else %}
-  <div class="table-responsive">
-    <table class="table-access-log">
-      <thead>
-        <tr>
-          <th>Utilizador</th>
-          <th>Ação</th>
-          <th>Recurso</th>
-          <th>IP</th>
-          <th>Quando</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for log in logs %}
-        <tr>
-          <td>{{ log.user.username if log.user else '—' }}</td>
-          <td>{{ log.action }}</td>
-          <td>{{ log.resource or '-' }}</td>
-          <td>{{ log.ip_address or '-' }}</td>
-          <td>{{ log.timestamp.strftime('%Y‑%m‑%d %H:%M:%S') }}</td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
-  </div>
-  {% endif %}
+<h2>Controlo de Acesso</h2>
+{% if logs|length == 0 %}
+<p>Nenhum registo de acesso disponível.</p>
+{% else %}
+<input type="text" id="search" class="search-input" placeholder="Pesquisar...">
+<table id="logTable" class="table-access-log log-table">
+  <thead>
+    <tr>
+      <th>Utilizador</th>
+      <th>Ação</th>
+      <th>Recurso</th>
+      <th>IP</th>
+      <th>Quando</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for log in logs %}
+    <tr>
+      <td>{{ log.user.username if log.user else '—' }}</td>
+      <td>{{ log.action }}</td>
+      <td>{{ log.resource or '-' }}</td>
+      <td>{{ log.ip_address or '-' }}</td>
+      <td>{{ log.timestamp.strftime('%Y-%m-%d %H:%M:%S') }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+<div class="chart-grid">
+<div class="chart-container">
+  <h3>Frequência de Ações</h3>
+  <canvas id="actionChart"></canvas>
 </div>
+<div class="chart-container">
+  <h3>Histograma de acessos (últimos 7 dias)</h3>
+  <canvas id="dailyChart"></canvas>
+</div>
+</div>
+{% endif %}
+{% endblock %}
 
+{% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+  // Filtro de pesquisa simples
+  document.getElementById('search').addEventListener('keyup', function() {
+    var filter = this.value.toLowerCase();
+    document.querySelectorAll('#logTable tbody tr').forEach(function(row) {
+      var text = row.textContent.toLowerCase();
+      row.style.display = text.indexOf(filter) > -1 ? '' : 'none';
+    });
+  });
+
+  // Dados para gráficos, fornecidos pelo controlador
+  const actionCounts = {{ action_counts|tojson }};
+  const dailyLabels  = {{ daily_labels|tojson }};
+  const dailyValues  = {{ daily_counts|tojson }};
+
+  // Gráfico de barras: ações
+  const ctx1 = document.getElementById('actionChart').getContext('2d');
+  new Chart(ctx1, {
+    type: 'bar',
+    data: {
+      labels: Object.keys(actionCounts),
+      datasets: [{
+        label: 'Frequência',
+        data: Object.values(actionCounts),
+        backgroundColor: '#6A5ACD'
+      }]
+    },
+    options: { responsive: true, maintainAspectRatio: false }
+  });
+
+  // Histograma: acessos por dia
+  const ctx2 = document.getElementById('dailyChart').getContext('2d');
+  new Chart(ctx2, {
+    type: 'bar',
+    data: {
+      labels: dailyLabels,
+      datasets: [{
+        label: 'Número de acessos',
+        data: dailyValues,
+        backgroundColor: '#20B2AA'
+      }]
+    },
+    options: { responsive: true, maintainAspectRatio: false }
+  });
+</script>
 {% endblock %}

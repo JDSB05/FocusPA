@@ -89,6 +89,17 @@
 
   <!-- Conteúdo principal -->
   <main id="main">
+    <div id="flash-list">
+      {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+          <ul style="display: none;">
+            {% for category, message in messages %}
+              <li data-category="{{ category }}">{{ message }}</li>
+            {% endfor %}
+          </ul>
+        {% endif %}
+      {% endwith %}
+      </div>
     {% block content %}
     {% endblock %}
   </main>

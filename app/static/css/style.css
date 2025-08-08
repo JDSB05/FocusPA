@@ -1,4 +1,5 @@
-html, body {
+html,
+body {
     width: 100%;
     height: 100%;
     min-height: 100vh;
@@ -49,7 +50,8 @@ body {
     top: 0;
     left: 0;
     height: 100vh;
-    width: var(--sidebar-width, 260px); /* valor inicial */
+    width: var(--sidebar-width, 260px);
+    /* valor inicial */
     transform: translateX(0);
     z-index: 1000;
     transition: transform 0.2s ease-in-out;
@@ -64,7 +66,7 @@ body {
 .float-top {
     display: flex;
     flex-direction: column;
-    height: calc( 100% - 50px );
+    height: calc(100% - 50px);
 }
 
 #sidebar.hidden {
@@ -113,7 +115,7 @@ button:hover {
     transition: all 0.2s ease-in-out;
     transform: rotate(0deg);
 }
-
+/* Chat styles*/
 .new-chat i {
     margin-right: 13px;
 }
@@ -142,7 +144,7 @@ button:hover {
     margin-right: 7px;
 }
 
-.conversations li > button {
+.conversations li>button {
     width: 100%;
     border: none;
     font-size: 0.9em;
@@ -150,7 +152,7 @@ button:hover {
     overflow: hidden;
 }
 
-.conversations li.active > button {
+.conversations li.active>button {
     background: var(--color-main);
 }
 
@@ -224,7 +226,7 @@ i.user-icon {
     font-family: system-ui, sans-serif;
 }
 
-.gpt.user-icon  {
+.gpt.user-icon {
     background: var(--color-gpt-icon);
 }
 
@@ -245,7 +247,7 @@ i.user-icon {
     opacity: 0.7;
 }
 
-.user-menu > ul,
+.user-menu>ul,
 .user-menu li {
     list-style: none;
     list-style-type: none;
@@ -253,7 +255,7 @@ i.user-icon {
     margin: 0;
 }
 
-.user-menu > ul {
+.user-menu>ul {
     display: none;
     position: absolute;
     top: 0;
@@ -266,11 +268,11 @@ i.user-icon {
     transition: all 0.2s ease-in-out;
 }
 
-.user-menu > ul.show-animate {
+.user-menu>ul.show-animate {
     display: block;
 }
 
-.user-menu > ul.show {
+.user-menu>ul.show {
     opacity: 1;
     margin-top: -8px;
 }
@@ -317,20 +319,21 @@ i.user-icon {
 }
 
 main {
-  transition: all 0.3s ease;
-  padding: 0 20px;
-  box-sizing: border-box;
-  width: 100%;
-  flex-grow: 1;
-  overflow-y: auto;
-  display: flex;
-  flex-direction: column;
-  align-content: center;
-  margin-left: 300px; /* valor inicial com sidebar visível */
+    transition: all 0.3s ease;
+    padding: 0 20px;
+    box-sizing: border-box;
+    width: 100%;
+    flex-grow: 1;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    align-content: center;
+    margin-left: 300px;
+    /* valor inicial com sidebar visível */
 }
 
-#sidebar.hidden ~ #main {
-  margin-left: 0;
+#sidebar.hidden~#main {
+    margin-left: 0;
 }
 
 
@@ -350,7 +353,7 @@ main .view {
     z-index: 2;
 }
 
-.model-selector > button {
+.model-selector>button {
     border-radius: 9px;
     text-align: center;
     width: 150px;
@@ -359,12 +362,12 @@ main .view {
     opacity: 0.5;
 }
 
-.model-selector > button:hover {
+.model-selector>button:hover {
     background: none;
     opacity: 1;
 }
 
-.model-selector > button.selected {
+.model-selector>button.selected {
     border: 1px solid var(--color-user-menu-selected-border);
     background: var(--color-user-menu-hover);
     opacity: 1;
@@ -400,7 +403,7 @@ main .view {
     text-align: left;
 }
 
-.model-selector > button:hover .model-info {
+.model-selector>button:hover .model-info {
     display: block;
 }
 
@@ -488,7 +491,7 @@ p.secondary {
     font-family: inherit;
     font-size: 1em;
     color: var(--color-white);
-    box-shadow: rgba(0,0,0,0.2) 0 0 45px;
+    box-shadow: rgba(0, 0, 0, 0.2) 0 0 45px;
     outline: none;
 }
 
@@ -532,51 +535,142 @@ button.send-button:hover {
     margin: 0 0 1.5em 0;
 }
 
+think {
+    display: none;
+}
+/* Chat styles end */
 .table-access-log {
-  width: 100%;
-  border-collapse: collapse;
-  box-shadow: 0 0 8px rgba(0, 0, 0, 0.15);
-  background: #ffffff;
-  overflow: hidden;
+    width: 100%;
+    border-collapse: collapse;
+    box-shadow: 0 0 8px rgba(0, 0, 0, 0.15);
+    background: #ffffff;
+    overflow: hidden;
 }
 
 .table-access-log thead th {
-  background-color: #343a40;
-  color: #ffffff;
-  font-weight: 600;
-  text-align: left;
-  padding: 0.75rem 1rem;
+    background-color: #343a40;
+    color: #ffffff;
+    font-weight: 600;
+    text-align: left;
+    padding: 0.75rem 1rem;
 }
 
 .table-access-log tbody tr {
-  border-bottom: 1px solid #dee2e6;
+    border-bottom: 1px solid #dee2e6;
 }
 
 .table-access-log tbody tr:hover {
-  background-color: #f1f3f5;
+    background-color: #f1f3f5;
 }
 
 .table-access-log td {
-  padding: 0.75rem 1rem;
-  vertical-align: middle;
-  color: #212529;
+    padding: 0.75rem 1rem;
+    vertical-align: middle;
+    color: #212529;
 }
 
 .table-access-log td:nth-child(1) {
-  font-style: italic;
-  color: #495057;
-  width: 40px;
+    font-style: italic;
+    color: #495057;
+    width: 40px;
 }
 
 .table-access-log td:nth-child(6),
 .table-access-log td:nth-child(3) {
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
 }
 
 .table-responsive {
-  display: block;
-  width: 100%;
-  overflow-x: auto;
-  -webkit-overflow-scrolling: touch;
+    display: block;
+    width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
 }
+
+/* Dashboard styles */
+
+.dashboard-container {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 20px;
+}
+
+.dashboard-card {
+    flex: 1 1 calc(50% - 20px);
+    box-sizing: border-box;
+    width: 50%;
+    max-width: 50%;
+}
+
+.chart-card {
+  display: flex;
+  flex-direction: column;
+  height: 50vh;               /* Mantém uma altura clara */
+  padding: 20px;
+  position: relative;
+  border-radius: 8px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.chart-card,
+.gauge-card {
+    height: 50vh;
+    position: relative;
+    padding: 20px;
+    border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    background-color: rgb(45, 45, 45);
+}
+
+.chart-container {
+    flex: 1;
+    position: relative;
+}
+
+canvas {
+  display: block;
+  width: 100% !important;
+  height: 100% !important;
+}
+
+.table-card {
+    padding: 20px;
+    border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    margin-top: 20px;
+}
+
+.table-card table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.table-card th,
+.table-card td {
+    padding: 8px;
+    text-align: left;
+    border-bottom: 1px solid #ddd;
+}
+
+/* Dashboard styles end */
+/* Access Control styles */
+.chart-container {
+  position: relative;
+  height: 300px;      /* ou outro valor fixo, ex: 50vh */
+  width: 100%;
+}
+
+.chart-container canvas {
+  width: 100% !important;
+  height: 100% !important;
+  display: block;
+}
+
+.chart-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 20px;
+}
+
+/* Access Control styles end */

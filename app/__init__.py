@@ -1,10 +1,11 @@
 # app/__init__.py
 
 from datetime import timedelta, datetime
-from flask import Flask, session
+from flask import Flask, jsonify, redirect, request, session, url_for
 from flask_login import current_user
 from apscheduler.schedulers.background import BackgroundScheduler
 from .services.anomaly_service import detect_and_create_anomalies
+from .services.elastic import create_fake_winlogs
 from .config import Config
 from .extensions import db, login_manager, migrate
 from .routes import (
@@ -32,6 +33,13 @@ def create_app(config_class: type = Config) -> Flask:
     @login_manager.user_loader
     def load_user(user_id: str):
         return User.query.get(int(user_id))
+    
+    @login_manager.unauthorized_handler
+    def unauthorized():
+        if request.is_json or request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+            return jsonify({"error": "Not authenticated"}), 401
+        return redirect(url_for('auth.login'))
+
 
     # Sessões permanentes
     app.permanent_session_lifetime = timedelta(minutes=30)
@@ -54,6 +62,7 @@ def create_app(config_class: type = Config) -> Flask:
         db.create_all()
         create_test_anomalies()
 
+    create_fake_winlogs()
     # Scheduler para deteção automática
     scheduler = BackgroundScheduler()
 

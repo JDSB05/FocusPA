@@ -42,7 +42,7 @@
         msg.className = sender + ' message';
         msg.innerHTML = `
             <div class="identity">
-                <i class="${sender === 'user' ? 'user-icon' : 'gpt user-icon'}">${sender === 'user' ? 'u' : 'G'}</i>
+                <i class="${sender === 'user' ? 'user-icon' : 'gpt user-icon'}">${sender === 'user' ? '{{ current_user.username[0]|upper }}' : 'IA'}</i>
             </div>
             <div class="content">
                 <p class="message-text">${text}</p>
@@ -71,6 +71,11 @@
             const data = await response.json();
             addMessage(data.answer || '[Erro na resposta]', 'assistant');
         } catch (error) {
+            if (response.status === 401) {
+                addMessage('[Não autenticado. Por favor inicia sessão.]', 'assistant');
+                console.error('Não autenticado:', error);
+                return;
+            }
             console.error('Erro:', error);
             addMessage('[Erro ao contactar o servidor]', 'assistant');
         }

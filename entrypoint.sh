@@ -10,12 +10,12 @@ echo "Aguarda 5 segundos para o Ollama iniciar..."
 sleep 5
 
 # Só faz pull se o modelo ainda não existir na pasta persistida
-if ! ollama ls | grep -q '^mistral$'; then
-  echo "Modelo mistral não encontrado. A descarregar..."
-  ollama pull mistral
-  echo "Modelo mistral descarregado com sucesso."
+if ! ollama ls | grep -q '^deepseek-coder$'; then
+  echo "Modelo deepseek-coder não encontrado. A descarregar..."
+  ollama pull deepseek-coder
+  echo "Modelo deepseek-coder descarregado com sucesso."
 else
-  echo "Modelo mistral já está presente — a ignorar pull."
+  echo "Modelo deepseek-coder já está presente — a ignorar pull."
 fi
 
 # Aguarda o processo principal (serve) terminar

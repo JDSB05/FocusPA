@@ -1,113 +1,154 @@
 {% extends 'layout.html' %}
-
 {% block title %}Dashboard de Anomalias{% endblock %}
 
 {% block styles %}
-<link rel="stylesheet" href="/static/css/style.css">
 <style>
-  .white-bg {
-    background-color: white;
-    padding: 20px;
-    border-radius: 8px;
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-  }
 </style>
-
 {% endblock %}
 
-
 {% block content %}
-<div class="container" style="padding-left: 5%;">
-  <h1 class="mb-4">Dashboard</h1>
-  <div class="row">
-    <!-- Anomaly count card -->
-    <div class="col-md-4">
-      <div class="card text-white bg-danger mb-3">
-        <div class="card-header">Total Anomalias:</div>
-        <div class="card-body">
-          <h2 class="card-title">{{ total_anomalies }}</h2>
-        </div>
-      </div>
+<h2>Dashboard</h2>
+<div class="dashboard-container">
+  <!-- Indicador de conformidade -->
+  <div class="gauge-card dashboard-card">
+    <h3>Taxa de Conformidade (Isto significa que {{ compliance_rate }}% dos casos de anomalias estão em conformidade, ou já se encontram resolvidos)</h3>
+    <div class="chart-container">
+      <canvas id="complianceGauge"></canvas>
     </div>
-    <!-- Compliance percentage card -->
-    <div class="col-md-4">
-      <div class="card text-white bg-success mb-3">
-        <div class="card-header">Conformidade:</div>
-        <div class="card-body">
-          <h2 class="card-title">{{ compliance_rate }}%</h2>
-        </div>
-      </div>
+    <p style="text-align:center">{{ compliance_rate }}%</p>
+  </div>
+
+  <!-- Gráfico de linhas -->
+  <div class="chart-card dashboard-card">
+    <h3>Anomalias por dia (últimos 14 dias)</h3>
+    <div class="chart-container">
+      <canvas id="anomalyChart"></canvas>
     </div>
   </div>
-  <!-- Interactive chart -->
-  <div class="white-bg">
-    <div class="row">
-      <div class="col-12">
-        <canvas id="anomalyChart" width="400" height="200"></canvas>
-      </div>
+
+  <!-- Gráfico de barras -->
+  <div class="chart-card dashboard-card">
+    <h3>Anomalias por severidade</h3>
+    <div class="chart-container">
+      <canvas id="severityChart"></canvas>
     </div>
   </div>
+
+  <!-- Gráfico de donut -->
+  <div class="chart-card dashboard-card">
+    <h3>Resolvidas vs Pendentes</h3>
+    <div class="chart-container">
+      <canvas id="statusChart"></canvas>
+    </div>
+  </div>
+</div>
+
+<!-- Tabela -->
+<div class="table-card">
+  <h3>Anomalias mais recentes</h3>
+  <table>
+    <thead>
+      <tr>
+        <th>Data</th>
+        <th>Fonte</th>
+        <th>Descrição</th>
+        <th>Severidade</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for a in top_anomalies %}
+      <tr>
+        <td>{{ a.timestamp.strftime('%Y-%m-%d %H:%M:%S') }}</td>
+        <td>{{ a.source }}</td>
+        <td>{{ a.description }}</td>
+        <td>{{ a.severity }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
 </div>
 {% endblock %}
 
 {% block scripts %}
-  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.3.0/dist/chart.umd.min.js"></script>
-  <script>
-    total_anomalies = {{ total_anomalies }};
-    {% if compliance_rate is not none %}
-      compliance_rate = {{ compliance_rate }};
-    {% else %}
-      compliance_rate = 0; // Default value if not provided
-    {% endif %}
-    console.log('Total Anomalies:', total_anomalies, 'Compliance Rate:', compliance_rate);
-  </script>
-  <script>
-    document.addEventListener('DOMContentLoaded', function() {
-      const labels = {{ chart_labels|tojson }} || [];
-      const data   = {{ chart_data|tojson }} || [];
-      console.log('Labels:', labels, 'Data:', data);
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+  const labels = {{ chart_labels|tojson }} || [];
+  const data   = {{ chart_data|tojson }} || [];
+  const severityCounts = {{ severity_counts|tojson }};
+  const statusCounts   = {{ status_counts|tojson }};
+  const complianceRate = {{ compliance_rate }};
 
-      const ctx = document.getElementById('anomalyChart').getContext('2d');
-        const plugin = {
-          id: 'customCanvasBackgroundColor',
-          beforeDraw: (chart, args, options) => {
-            const { ctx } = chart;
-            ctx.save();
-            ctx.globalCompositeOperation = 'destination-over';
-            ctx.fillStyle = options.color || '#99ffff';
-            ctx.fillRect(0, 0, chart.width, chart.height);
-            ctx.restore();
-          }
-        };
-      new Chart(ctx, {
-        type: 'line',
-        data: {
-          labels: labels,
-          datasets: [{
-            label: 'Anomalias por dia',
-            data: data,
-            fill: false,
-            tension: 0.1,
-            backgroundColor: 'rgba(75, 192, 192, 0.2)',
-            borderColor: 'rgba(75, 192, 192, 1)'
-          }]
-        },
-        options: {
-          responsive: true,
-          maintainAspectRatio: false,
-          scales: {
-            y: {
-              beginAtZero: true
-            }
-          },
-          plugins: {
-            customCanvasBackgroundColor: {
-              color: '#f0f0f0'
-            }
-          }
-        },
-        plugins: [plugin]
-      });
+  const createChart = (ctx, type, data, options = {}) =>
+    new Chart(ctx, {
+      type: type,
+      data: data,
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        ...options
+      }
     });
-  </script>
+
+  // Anomalias por dia
+  createChart(document.getElementById('anomalyChart').getContext('2d'), 'line', {
+    labels: labels,
+    datasets: [{
+      label: 'Anomalias',
+      data: data,
+      fill: false,
+      tension: 0.1,
+      backgroundColor: 'rgba(75, 192, 192, 0.2)',
+      borderColor: 'rgba(75, 192, 192, 1)'
+    }]
+  });
+
+  // Anomalias por severidade
+  createChart(document.getElementById('severityChart').getContext('2d'), 'bar', {
+    labels: Object.keys(severityCounts),
+    datasets: [{
+      label: 'Contagem',
+      data: Object.values(severityCounts),
+      backgroundColor: ['#FFD700', '#FFA500', '#FF4500']
+    }],
+    options: {
+    responsive: true,
+    maintainAspectRatio: false,
+    aspectRatio: 1
+  }
+  });
+
+  // Resolvidas vs Pendentes
+  createChart(document.getElementById('statusChart').getContext('2d'), 'doughnut', {
+    labels: Object.keys(statusCounts),
+    datasets: [{
+      data: Object.values(statusCounts),
+      backgroundColor: ['#00C49A', '#FF6A6A']
+    }],
+    options: {
+    responsive: true,
+    maintainAspectRatio: false,
+    aspectRatio: 1
+  }
+  });
+
+  // Gauge de Conformidade
+  createChart(document.getElementById('complianceGauge').getContext('2d'), 'doughnut', {
+    labels: ['Conformidade', 'Restante'],
+    datasets: [{
+      data: [complianceRate, 100 - complianceRate],
+      backgroundColor: ['#00BFFF', '#f0f0f0'],
+      borderWidth: 0
+    }],
+    options: {
+    responsive: true,
+    maintainAspectRatio: false,
+    aspectRatio: 1
+  }
+  }, {
+    circumference: 180,
+    rotation: 270,
+    cutout: '70%',
+    plugins: { legend: { display: false } }
+  });
+</script>
 {% endblock %}
