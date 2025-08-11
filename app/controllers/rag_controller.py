@@ -6,6 +6,7 @@ from sentence_transformers import util
 from app.services.embeddings import embed as embed_fn
 from app.services.chroma_client import chroma
 from app.services.elastic import es
+from sentence_transformers import SentenceTransformer
 
 # ===== Config =====
 EMBED_MODEL = os.environ.get(
@@ -104,7 +105,8 @@ def chroma_search(query_text: str, n_results: int = 5):
         print(f"[INFO] [Chroma] Collection 'policies' encontrada: {collection.name}")
 
         # Embeddings da query
-        q_emb = embed_fn(refined_query)
+        q_emb = embed_fn(query_text)
+
 
         # Query vetorial
         res = collection.query(
