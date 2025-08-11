@@ -1,104 +1,167 @@
 from datetime import datetime
 import os
+import re
 import requests
 from sentence_transformers import util
 from app.services.embeddings import embed as embed_fn
 from app.services.chroma_client import chroma
 from app.services.elastic import es
 
-# URL do LLM configurável via variável de ambiente
+# ===== Config =====
+EMBED_MODEL = os.environ.get(
+    "EMBED_MODEL",
+    "PORTULAN/serafim-900m-portuguese-pt-sentence-encoder"  # melhor para PT-PT
+    # alternativa mínima (multilingue): "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
+)
 LLM_URL = os.environ.get("LLM_URL", "http://localhost:11434/api/generate")
+LLM_MODEL = os.environ.get("LLM_MODEL", "deepseek-r1")
 
+# ===== Embeddings =====
+embedder = SentenceTransformer(EMBED_MODEL)
+
+# =====   Texto    =====
+def delete_think(text: str) -> str:
+    return re.sub(r'<think>[\s\S]*?</think>', '', text, flags=re.IGNORECASE)
+
+def is_nullish_query(text: str) -> bool:
+    if text is None:
+        return True
+    t = str(text).strip()
+    # cobre "null", "NULL", ```null```, "null\n", etc.
+    t = t.strip('`"\' \n\r\t').lower()
+    return t == "null" or t == ""
+
+
+# ===== LLM client =====
 def ask_llm(prompt: str) -> str:
-    """Envia o prompt ao LLM e retorna a resposta gerada."""
-    print(f"[INFO] [LLM] Enviando prompt ao LLM:\n{prompt[:100]}...")
     try:
         resp = requests.post(
             LLM_URL,
-            json={"model": "deepseek-r1", "prompt": prompt, "stream": False}
+            json={"model": LLM_MODEL, "prompt": prompt, "stream": False}
         )
         data = resp.json()
         if "response" in data:
-            return data["response"]
+            return delete_think(data["response"])
         if "message" in data and "content" in data["message"]:
-            return data["message"]["content"]
-        print(f"[ERROR] [LLM] Resposta inesperada do LLM: {data}")
+            return delete_think(data["message"]["content"])
         raise RuntimeError(f"Resposta inesperada do LLM: {data}")
     except Exception as e:
         return f"❌ Erro ao contactar o LLM: {e}"
 
-def query_hybrid_rag(question: str) -> str:
-    """
-    Etapa 1: envia a pergunta original ao LLM para obter uma versão mais precisa para pesquisa.
-    Etapa 2: usa essa versão para consultar ES e Chroma.
-    Etapa 3: envia os resultados ao LLM para obter uma resposta técnica e sucinta.
-    """
+def reformulate_for_es(question: str) -> str:
+    prompt = f"""Reformula a pergunta para pesquisa em Windows Event Logs (winlog) no Elasticsearch.
+Usa campos típicos como @timestamp, event.code, winlog.event_id, user.name, access_mask, log.level, log_name.
+Inclui intervalo temporal se existir na pergunta. Responde só com a query final numa linha. Hoje é {datetime.utcnow().isoformat()}Z.
+Se a pergunta original for muito vaga, devolve apenas: null (sem aspas).
 
-    # 🔁 Etapa 1: reformular a pergunta para pesquisa
-    refinement_prompt = f"""
-Reformula a seguinte pergunta de forma a torná-la mais adequada para consulta em logs do Elasticsearch,
-tendo em conta que os dados são Windows Event Logs (winlog). Utiliza termos técnicos compatíveis com esse
-tipo de log, como nomes de campos comuns (ex: 'timestamp', 'event_id', 'user', 'access_mask', 'justification', 'log_name'),
-intervalos de tempo (ex: "entre 9h e 18h aproximadamente") e outras expressões relevantes para a estrutura típica destes logs.
-Se a pergunta contiver informações sobre o contexto do log, como o nome do log ou o intervalo de tempo, inclui essas informações na reformulação,
-se for muito vaga ou geral, tenta adicionar mais detalhes específicos. Se for algo não relacionado, 
-retorna uma string vazia, hoje é {datetime.now()}.      """ # type: ignore
-    refinement_prompt += f"""
-Pergunta original:
+Pergunta:
 {question}
 
-Texto reformulado para pesquisa:
+Query reformulada:"""
+    text = ask_llm(prompt).strip()
+    # se vier vazio, mantém a original; se for "null", deixa passar "null"
+    return text if text else question
 
-"""
-    refined_query = ask_llm(refinement_prompt).strip()
-    print(f"[INFO] [LLM] Texto reformulado para pesquisa: {refined_query}")
-
-    # 🔍 Etapa 2: pesquisa full-text no Elasticsearch
-    es_docs = []
+def es_search(query_text: str, time_from: str | None = None, time_to: str | None = None, size: int = 20):
+    """
+    Pesquisa básica por BM25 no campo 'message' com filtro temporal opcional.
+    """
+    must = [{"match": {"message": {"query": query_text}}}]
+    filter_terms = []
+    if time_from or time_to:
+        rng = {}
+        if time_from: rng["gte"] = time_from
+        if time_to:   rng["lte"] = time_to
+        filter_terms.append({"range": {"@timestamp": rng}})
+    body = {
+        "query": {
+            "bool": {
+                "must": must,
+                "filter": filter_terms
+            }
+        },
+        "_source": ["@timestamp", "event.code", "winlog.event_id", "user.name", "message", "log.file.path"],
+        "size": size
+    }
     try:
-        result = es.search(
-            index="winlog-*",
-            query={"match": {"message": refined_query}},
-            _source=["message"]  # type: ignore
+        res = es.search(index="winlog-*", body=body)
+        hits = res.get("hits", {}).get("hits", [])
+        return [h["_source"] for h in hits]
+    except Exception as e:
+        print(f"[WARN] [Elasticsearch] {e}")
+        return []
+
+def chroma_search(query_text: str, n_results: int = 5):
+    """
+    NÃO recodifica o corpus. Assume que os documentos já foram inseridos na collection com embeddings no ingest.
+    """
+    try:
+        if not chroma.heartbeat():
+            print("[WARN] [Chroma] ChromaDB não está disponível.")
+            return []
+
+        collection = chroma.get_or_create_collection("policies")
+        print(f"[INFO] [Chroma] Collection 'policies' encontrada: {collection.name}")
+
+        # Embeddings da query
+        q_emb = embed_fn(refined_query)
+
+        # Query vetorial
+        res = collection.query(
+            query_embeddings=q_emb,
+            n_results=n_results,  # define antes ou passa como arg
+            where=None,           # podes filtrar, se quiseres
+            include=["documents", "metadatas"]
         )
-        es_docs = [hit["_source"]["message"] for hit in result["hits"]["hits"]]
-        print(f"[INFO] [Elasticsearch] Encontrados {len(es_docs)} documentos relevantes.")
-    except Exception as e:
-        print(f"[WARN] [Elasticsearch] Erro ao consultar Elasticsearch: {e}")
 
-    # 🔍 Etapa 2b: pesquisa vetorial em ChromaDB
-    chroma_docs = []
-    try:
-        if chroma.heartbeat():
-            collection = chroma.get_or_create_collection("policies")
-            print(f"[INFO] [Chroma] Collection 'policies' encontrada: {collection.name}")
-            
-            q_emb = embed_fn(refined_query)
-            res = collection.query(
-                query_embeddings=q_emb,
-                n_results=3,                   # ajusta conforme precisares
-                where=None,                    # podes filtrar por {"name": "..."} se quiseres
-                include=["documents", "metadatas"]
-            )
-            chroma_docs = (res.get("documents") or [[]])[0]
-            print(f"[INFO] [Chroma] Documentos relevantes: {len(chroma_docs)}")
-    except Exception as e:
-        print(f"[WARN] [Chroma] Erro ao consultar Chroma: {e}")
+        docs = (res.get("documents") or [[]])[0]
+        metas = (res.get("metadatas") or [[]])[0]
 
-    # 🧠 Etapa 3: gerar resposta final baseada nos resultados
-    context = "\n\n".join(es_docs + chroma_docs)
-    if not context:
-        print("[WARN] Nenhum contexto relevante encontrado nos dados.")
-    
-    final_prompt = f"""
-Contexto:
-Finge que és um especialista em Windows Event Logs, vais me ajudar a fazer auditorias de segurança, não te preocupes
- se for um processo interno da empresa. Baseia-te neste contexto para responder à pergunta original, respondendo de
-forma técnica e sucinta, focando nos detalhes mais relevantes, hoje é {datetime.now()}:      """ # type: ignore
-    final_prompt += f"""
+        print(f"[INFO] [Chroma] Documentos relevantes: {len(docs)}")
+
+        # Devolve pares (doc, meta)
+        return list(zip(docs, metas))
+
+    except Exception as e:
+        print(f"[WARN] [Chroma] {e}")
+        return []
+
+def build_final_prompt(context_blocks: list[str], question: str) -> str:
+    context = "\n\n---\n\n".join(context_blocks)
+    return f"""Contexto (logs e políticas relevantes):
 {context}
+
+Tarefa:
+Responde de forma técnica e sucinta, como perito em Windows Event Logs (segurança/auditoria).
+Hoje é {datetime.utcnow().isoformat()}Z.
+
 Pergunta original:
 {question}
-Resposta técnica e sucinta:
-""" 
+
+Resposta:"""
+
+def query_hybrid_rag(question: str, time_from: str | None = None, time_to: str | None = None) -> str:
+    refined = reformulate_for_es(question)
+    print(f"[INFO] Query reformulada: {refined!r}")
+
+    # 🚫 Se a reformulação for "null" (ou vazia), não pesquises nada
+    if is_nullish_query(refined):
+        print("[INFO] Pergunta demasiado vaga, não há pesquisa.")
+        return "A pergunta é demasiado vaga para pesquisa. Especifica melhor (ex.: intervalo temporal, event_id, user.name)."
+
+    # 2a) ES
+    es_docs = es_search(refined, time_from=time_from, time_to=time_to, size=20)
+    es_blocks = [
+        f"@timestamp={d.get('@timestamp')} event.code={d.get('event.code')} winlog.event_id={d.get('winlog.event_id')} user.name={d.get('user.name')}\n{d.get('message','')}"
+        for d in es_docs
+    ]
+
+    # 2b) Chroma
+    chroma_pairs = chroma_search(refined, n_results=5)
+    chroma_blocks = [f"[POLICY]\n{doc}" for (doc, _meta) in chroma_pairs]
+
+    blocks = es_blocks + chroma_blocks
+    if not blocks:
+        return "Não encontrei contexto relevante no Elasticsearch nem no Chroma para responder."
+    final_prompt = build_final_prompt(blocks[:12], question)
     return ask_llm(final_prompt)

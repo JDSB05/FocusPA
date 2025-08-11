@@ -441,6 +441,7 @@ p.secondary {
 
 .message {
     display: flex;
+    align-items: flex-start;
     gap: 20px;
     padding: 25px 60px 15px 60px;
     border-bottom: 1px solid var(--color-border2);
@@ -448,7 +449,7 @@ p.secondary {
 }
 
 .message .content {
-    padding-top: 5px;
+    margin-top: 0px;
 }
 
 .user.message {
@@ -495,6 +496,10 @@ p.secondary {
     outline: none;
 }
 
+.message-text {
+    margin: 0 0 1.5em 0;
+}
+
 .disclaimer {
     margin-top: 12px;
     color: var(--color-disclaimer);
@@ -531,14 +536,16 @@ button.send-button:hover {
     color: var(--color-white);
 }
 
-.message-text {
-    margin: 0 0 1.5em 0;
-}
 
 think {
     display: none;
 }
+
+  .message .content { white-space: normal; }
+  .message pre { overflow-x: auto; margin: 0.5rem 0; }
+  .message code { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace; }
 /* Chat styles end */
+/* Access Log styles */
 .table-access-log {
     width: 100%;
     border-collapse: collapse;
@@ -587,7 +594,7 @@ think {
     overflow-x: auto;
     -webkit-overflow-scrolling: touch;
 }
-
+/* Table styles end */
 /* Dashboard styles */
 
 .dashboard-container {

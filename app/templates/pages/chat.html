@@ -1,14 +1,7 @@
 {% extends 'layout.html' %}
 {% block title %}Chat com LLM (RAG){% endblock %}
-{% block styles %}
-<style>
-  .chat-container {
-    justify-content: space-between;
-  }
-</style>
-{% endblock %}
 {% block content %}
-<div class="chat-container" style="justify-content: space-between; height:100%; display: flex; flex-direction: column;">
+<div class="chat-container" style="">
   <div class="view new-chat-view"></div>
 
   <div class="view conversation-view">
@@ -27,6 +20,13 @@
   </div>
 </div>
 
+<!-- Markdown parser -->
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<!-- Sanitização contra XSS -->
+<script src="https://cdn.jsdelivr.net/npm/dompurify@3.1.7/dist/purify.min.js"></script>
+<!-- (Opcional) highlight.js para blocos de código -->
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/highlight.js@11.9.0/styles/default.min.css">
+<script src="https://cdn.jsdelivr.net/npm/highlight.js@11.9.0/lib/highlight.min.js"></script>
 
 <script>
     const form = document.getElementById('form');
@@ -34,23 +34,41 @@
     const chatBox = document.getElementById('chat-box');
 
     function addMessage(text, sender) {
-        const placeholder = document.getElementById('chat-placeholder');
-        if (placeholder.style.display !== 'none') 
-            placeholder.style.display = 'none';
-        const msg = document.createElement('div');
-        console.log('Adding message:', text, 'from sender:', sender);
-        msg.className = sender + ' message';
-        msg.innerHTML = `
-            <div class="identity">
-                <i class="${sender === 'user' ? 'user-icon' : 'gpt user-icon'}">${sender === 'user' ? '{{ current_user.username[0]|upper }}' : 'IA'}</i>
-            </div>
-            <div class="content">
-                <p class="message-text">${text}</p>
-            </div>
-        `;
-        console.log('Message element created:', msg);
-        chatBox.appendChild(msg);
-        chatBox.scrollTop = chatBox.scrollHeight;
+      const placeholder = document.getElementById('chat-placeholder');
+      if (placeholder && placeholder.style.display !== 'none') placeholder.style.display = 'none';
+
+      const msg = document.createElement('div');
+      msg.className = sender + ' message';
+
+      // 1) Render Markdown se for assistant; para o user podes também permitir Markdown, se quiseres.
+      let rendered = text;
+      try {
+        rendered = marked.parse(text); // Markdown -> HTML
+      } catch (e) {
+        // se o parser falhar, cai para texto simples com quebras de linha
+        rendered = text.replace(/\n/g, '<br>');
+      }
+
+      // 2) Sanitizar SEMPRE antes de inserir no DOM
+      const safeHtml = DOMPurify.sanitize(rendered);
+
+      msg.innerHTML = `
+      <div class="identity">
+        <i class="${sender === 'user' ? 'user-icon' : 'gpt user-icon'}">
+          ${sender === 'user' ? '{{ current_user.username[0]|upper }}' : 'IA'}
+        </i>
+      </div>
+      <div class="content">
+        ${safeHtml}
+      </div>
+    `;
+
+      chatBox.appendChild(msg);
+
+      // 3) (Opcional) realçar código depois de inserir
+      if (window.hljs) hljs.highlightAll();
+
+      chatBox.scrollTop = chatBox.scrollHeight;
     }
 
     form.addEventListener('submit', async (e) => {
@@ -81,4 +99,15 @@
         }
     });
 </script>
+<style>
+  .chat-container {
+    justify-content: space-between;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+  }
+  p {
+    margin: 0 0 1.5em 0;
+  }
+</style>
 {% endblock %}
