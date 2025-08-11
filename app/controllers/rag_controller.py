@@ -1,12 +1,10 @@
 from datetime import datetime
 import os
 import requests
-from sentence_transformers import SentenceTransformer, util
+from sentence_transformers import util
+from app.services.embeddings import embed as embed_fn
 from app.services.chroma_client import chroma
 from app.services.elastic import es
-
-# Carrega o modelo de embeddings
-embedder = SentenceTransformer("all-MiniLM-L6-v2")
 
 # URL do LLM configurável via variável de ambiente
 LLM_URL = os.environ.get("LLM_URL", "http://localhost:11434/api/generate")
@@ -74,13 +72,16 @@ Texto reformulado para pesquisa:
         if chroma.heartbeat():
             collection = chroma.get_or_create_collection("policies")
             print(f"[INFO] [Chroma] Collection 'policies' encontrada: {collection.name}")
-            all_docs = collection.get()["documents"] or []
-            print(f"[INFO] [Chroma] Documentos encontrados: {len(all_docs)}")
-            if all_docs:
-                q_emb = embedder.encode(refined_query, convert_to_tensor=True)
-                corpus_emb = embedder.encode(all_docs, convert_to_tensor=True)
-                hits = util.semantic_search(q_emb, corpus_emb, top_k=3)[0]
-                chroma_docs = [all_docs[int(h['corpus_id'])] for h in hits]
+            
+            q_emb = embed_fn(refined_query)
+            res = collection.query(
+                query_embeddings=q_emb,
+                n_results=3,                   # ajusta conforme precisares
+                where=None,                    # podes filtrar por {"name": "..."} se quiseres
+                include=["documents", "metadatas"]
+            )
+            chroma_docs = (res.get("documents") or [[]])[0]
+            print(f"[INFO] [Chroma] Documentos relevantes: {len(chroma_docs)}")
     except Exception as e:
         print(f"[WARN] [Chroma] Erro ao consultar Chroma: {e}")
 

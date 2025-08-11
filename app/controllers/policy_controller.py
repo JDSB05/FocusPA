@@ -1,4 +1,5 @@
 from flask import render_template, request, redirect, url_for, flash, jsonify
+from sympy import content
 from werkzeug.utils import secure_filename
 import os
 
@@ -7,6 +8,12 @@ from ..model import Policy
 from ..utils.text_extractor import extract_text_from_file
 from ..services.chroma_client import chroma
 
+from datetime import datetime
+import mimetypes
+
+from ..utils.text_chunker import split_into_word_chunks
+from ..services.embeddings import embed
+
 UPLOAD_FOLDER = "uploads"
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
@@ -14,28 +21,57 @@ def list_policies():
     """Retorna todas as políticas armazenadas."""
     return render_template('pages/policies.html', policies=Policy.query.order_by(Policy.name).all())
 
-def add_policy(name: str, content: str):
-    """Adiciona uma nova política ao Chroma e à BD."""
-    # Adiciona ao Chroma
+def add_policy(name: str, content: str, base_meta: dict | None = None):
+    """
+    Adiciona uma política à Chroma (em chunks) e à BD.
+    - Chroma: múltiplos documentos (1 por chunk) com embeddings e metadados.
+    - BD: guarda o texto completo como já fazias.
+    """
     col = chroma.get_or_create_collection("policies")
-    print(f"[INFO] [Chroma] Adding policy '{name}' to ChromaDB")
-    col.add(documents=[content], metadatas=[{"name": name}], ids=[name])
-    print("[INFO] [Chroma] Policy added to ChromaDB")
 
-    # Adiciona à BD
-    policy = Policy(name=name, content=content) # type: ignore
+    # 1) Chunking
+    chunks = split_into_word_chunks(content, chunk_words=800, overlap=80)
+    total = len(chunks) if chunks else 1
+    if not chunks:
+        chunks = [content]
+
+    # 2) Embeddings (um por chunk)
+    embeddings = embed(chunks)
+
+    # 3) IDs estáveis por chunk (evita conflitos)
+    ids = [f"{name}::chunk-{i:04d}" for i in range(total)]
+
+    # 4) Metadados por chunk
+    base_meta = base_meta or {}
+    metadatas = []
+    for i in range(total):
+        md = {
+            "name": name,
+            "chunk_index": i,
+            "total_chunks": total,
+            "ingested_at": datetime.utcnow().isoformat() + "Z",
+        }
+        md.update(base_meta)
+        metadatas.append(md)
+
+    # 5) Inserir na Chroma (um batch)
+    print(f"[INFO] [Chroma] Adding policy '{name}' com {total} chunks")
+    col.add(ids=ids, documents=chunks, metadatas=metadatas, embeddings=embeddings)
+    print("[INFO] [Chroma] Policy chunks added")
+
+    # 6) BD (mantém igual – texto completo)
+    policy = Policy(name=name, content=content)  # type: ignore
     db.session.add(policy)
     db.session.commit()
 
 def delete_policy(name: str):
-    """Remove uma política do Chroma e da BD com base no nome."""
-    # Apaga do Chroma
+    """Remove todos os chunks da política no Chroma e a entrada na BD."""
     col = chroma.get_or_create_collection("policies")
-    print(f"[INFO] [Chroma] Deleting policy '{name}' from ChromaDB")
-    col.delete(ids=[name])
+    print(f"[INFO] [Chroma] Deleting policy '{name}' (by metadata)")
+    # Apaga TUDO com metadata name=<name> (em vez de só 1 id)
+    col.delete(where={"name": name})
     print("[INFO] [Chroma] Policy deleted from ChromaDB")
 
-    # Apaga da BD
     policy = Policy.query.filter_by(name=name).first()
     if policy:
         db.session.delete(policy)
@@ -55,12 +91,36 @@ def policy_new():
         file.save(filepath)
 
         try:
+            # Extrai texto do ficheiro
             content = extract_text_from_file(filepath)
-            print(f"[DEBUG] [Chroma] Apagando a política {name}, para garantir que não há duplicados.") 
-            delete_policy(name)  # Garante que não há duplicados
-            add_policy(name=name, content=content)
+
+            if not content or not content.strip():
+                flash("O ficheiro não contém texto extraível.", "Erro")
+                return redirect(request.url)
+
+            # Normalizar whitespace antes de chunking (melhora embeddings)
+            content = " ".join(content.split())
+
+            # Metadados do ficheiro para guardar na Chroma por chunk
+            stat = os.stat(filepath)
+            base_meta = {
+                "filename": filename,
+                "file_ext": os.path.splitext(filename)[1].lower(),
+                "filesize": stat.st_size,
+                "file_mtime": datetime.utcfromtimestamp(stat.st_mtime).isoformat() + "Z",
+                "mimetype": mimetypes.guess_type(filename)[0] or "application/octet-stream",
+            }
+
+            # Garante que não há duplicados na Chroma (apaga por metadata name=<name>)
+            print(f"[DEBUG] [Chroma] Apagando a política {name}, para garantir que não há duplicados.")
+            delete_policy(name)
+
+            # Adiciona em chunks com metadados e embeddings
+            add_policy(name=name, content=content, base_meta=base_meta)
+
             flash('Política criada com sucesso.', 'Sucesso')
             return redirect(url_for('policy.list_policies'))
+        
         except Exception as e:
             flash(f"Erro ao processar política: {e}", 'Erro')
             return redirect(request.url)
@@ -81,8 +141,22 @@ def policy_edit(policy_id: int):
             file.save(filepath)
             try:
                 content = extract_text_from_file(filepath)
+
+                if not content or not content.strip():
+                    flash("O ficheiro não contém texto extraível.", "Erro")
+                    return redirect(request.url)
+
+                stat = os.stat(filepath)
+                base_meta = {
+                    "filename": filename,
+                    "file_ext": os.path.splitext(filename)[1].lower(),
+                    "filesize": stat.st_size,
+                    "file_mtime": datetime.utcfromtimestamp(stat.st_mtime).isoformat() + "Z",
+                    "mimetype": mimetypes.guess_type(filename)[0] or "application/octet-stream",
+                }
+
                 delete_policy(old_name)
-                add_policy(name=new_name, content=content) # type: ignore
+                add_policy(name=new_name, content=content, base_meta=base_meta)  # type: ignore
                 flash('Política atualizada.', 'Sucesso')
             except Exception as e:
                 flash(f"Erro ao atualizar política: {e}", 'Erro')
@@ -101,11 +175,40 @@ def policy_edit(policy_id: int):
 
     return render_template('pages/policy_form.html', policy=policy)
 
+def delete_policy(name: str) -> int:
+    """Remove todos os chunks da política no Chroma e a entrada na BD. Devolve nº de chunks apagados."""
+    col = chroma.get_or_create_collection("policies")
+    print(f"[INFO] [Chroma] Deleting policy '{name}' (by metadata)")
+
+    deleted_count = 0
+    try:
+        # Pede só metadados para não puxar embeddings/documentos pesados; 'ids' vem sempre no resultado
+        res = col.get(where={"name": name}, include=["metadatas"])
+        ids = (res.get("ids") or [])
+        deleted_count = len(ids)
+    except Exception as e:
+        print(f"[WARN] [Chroma] Não foi possível contar chunks antes de apagar: {e}")
+
+    try:
+        col.delete(where={"name": name})
+        print(f"[INFO] [Chroma] Policy deleted from ChromaDB ({deleted_count} chunks).")
+    except Exception as e:
+        print(f"[ERROR] [Chroma] Erro ao apagar na Chroma: {e}")
+
+    # Apaga da BD
+    policy = Policy.query.filter_by(name=name).first()
+    if policy:
+        db.session.delete(policy)
+        db.session.commit()
+
+    return deleted_count
+
 def policy_delete(policy_id: int):
     policy = Policy.query.get_or_404(policy_id)
     try:
-        delete_policy(policy.name)
-        flash('Política removida.', 'Sucesso')
+        n = delete_policy(policy.name)
+        unidade = "chunk" if n == 1 else "chunks"
+        flash(f'Política removida. {n} {unidade} apagado(s) na Chroma.', 'Sucesso')
     except Exception as e:
         flash(f"Erro ao apagar política: {e}", 'Erro')
     return redirect(url_for('policy.list_policies'))
@@ -125,8 +228,21 @@ def upload_policy():
 
         try:
             content = extract_text_from_file(filepath)
+
+            if not content or not content.strip():
+                return jsonify({'error': 'O ficheiro não contém texto extraível.'}), 400
+
+            stat = os.stat(filepath)
+            base_meta = {
+                "filename": filename,
+                "file_ext": os.path.splitext(filename)[1].lower(),
+                "filesize": stat.st_size,
+                "file_mtime": datetime.utcfromtimestamp(stat.st_mtime).isoformat() + "Z",
+                "mimetype": mimetypes.guess_type(filename)[0] or "application/octet-stream",
+            }
+
             delete_policy(name)
-            add_policy(name=name, content=content)
+            add_policy(name=name, content=content, base_meta=base_meta)
             return jsonify({'result': 'Policy uploaded successfully via file'}), 201
         except Exception as e:
             return jsonify({'error': f'Failed to process file: {e}'}), 500
@@ -139,6 +255,9 @@ def upload_policy():
         content = policy_data.get('content')
 
         try:
+            if not content or not str(content).strip():
+                return jsonify({'error': 'Conteúdo vazio.'}), 400
+
             delete_policy(name)
             add_policy(name=name, content=content)
             return jsonify({'result': 'Policy uploaded successfully'}), 201
