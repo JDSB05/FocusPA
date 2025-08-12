@@ -11,40 +11,114 @@
       <option value="medium">Média</option>
       <option value="high">Alta</option>
     </select>
+    <span>Filtrar por estado:</span>
+    <select id="stateFilter" class="form-select w-auto d-inline">
+      <option value="">Todos</option>
+      <option value="resolved">Resolvidos</option>
+      <option value="unresolved">Pendentes</option>
+    </select>
   </div>
+  <span>Filtrar por data:</span>
+  <input type="date" id="dateFilter" class="form-control w-auto d-inline" />
   <div class="table-responsive" id="anomaliesTable">
     <table class="table-access-log">
-    <thead>
-      <tr>
-        <th>Timestamp</th>
-        <th>Fonte</th>
-        <th>Descrição</th>
-        <th>Severidade</th>
-        <th>Resolvido</th>
-      </tr>
-    </thead>
-    <tbody>
-      {% for a in anomalies %}
-      <tr data-severity="{{ a.severity }}">
-        <td>{{ a.timestamp.strftime('%Y‑%m‑%d %H:%M:%S') }}</td>
-        <td>{{ a.source }}</td>
-        <td>{{ a.description }}</td>
-        <td>{{ a.severity }}</td>
-        <td>{{ 'Sim' if a.resolved else 'Não' }}</td>
-      </tr>
-      {% else %}
-      <tr><td colspan="5">Nenhuma anomalia registada.</td></tr>
-      {% endfor %}
-    </tbody>
-  </table>
+      <thead>
+        <tr>
+          <th>Timestamp</th>
+          <th>Fonte</th>
+          <th>Descrição</th>
+          <th>Severidade</th>
+          <th>Resolvido</th>
+          <th>Ações</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for a in anomalies %}
+       <tr data-severity="{{ a.severity }}" data-state="{{ 'resolved' if a.resolved else 'unresolved' }}" data-date="{{ a.timestamp.strftime('%Y-%m-%d') }}">
+          <td>{{ a.timestamp.strftime('%Y‑%m‑%d %H:%M:%S') }}</td>
+          <td>{{ a.source }}</td>
+          <td>{{ a.description }}</td>
+          <td>{{ a.severity }}</td>
+          <td>{{ 'Sim' if a.resolved else 'Não' }}</td>
+          <td>
+            <button class="table-button" onclick="showModal({
+            title: 'Confirmar resolução',
+            body: '<p>Tens a certeza que queres marcar esta anomalia como resolvida?</p>',
+            actions: [
+              { label: 'Marcar como resolvido',  onClick: () => { 
+                  fetch(`/anomalies/{{ a.id }}/resolve`, { method: 'POST' })
+                    .then(() => location.reload());
+                }
+              },
+              { label: 'Cancelar', onClick: () => {} },
+            ]
+          })">
+              Marcar como resolvido
+            </button>
+          </td>
+        </tr>
+        {% else %}
+        <tr>
+          <td colspan="5">Nenhuma anomalia registada.</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% if pagination.pages > 1 %}
+          <nav class="pagination-nav" style="margin-top: 1rem; display:flex; gap:0.25rem;">
+            <!-- Primeira página -->
+            <a class="page-link {{ 'disabled' if not pagination.has_prev }}"
+              href="{{ url_for('anomaly.list_anomalies', page=1) }}">«</a>
+
+            <!-- Página anterior -->
+            <a class="page-link {{ 'disabled' if not pagination.has_prev }}"
+              href="{{ url_for('anomaly.list_anomalies', page=pagination.prev_num or 1) }}">‹</a>
+
+            <!-- Números de página -->
+            {% for p in range(start_page, end_page + 1) %}
+              <a class="page-link {{ 'active' if p == pagination.page }}"
+                href="{{ url_for('anomaly.list_anomalies', page=p) }}">{{ p }}</a>
+            {% endfor %}
+
+            <!-- Página seguinte -->
+            <a class="page-link {{ 'disabled' if not pagination.has_next }}"
+              href="{{ url_for('anomaly.list_anomalies', page=pagination.next_num or pagination.page) }}">›</a>
+
+            <!-- Última página -->
+            <a class="page-link {{ 'disabled' if not pagination.has_next }}"
+              href="{{ url_for('anomaly.list_anomalies', page=pagination.pages) }}">»</a>
+          </nav>
+          {% endif %}
   </div>
 </div>
 <script>
-document.getElementById('severityFilter').addEventListener('change', function() {
-  var filter = this.value;
+function applyFilters() {
+  var severityFilter = document.getElementById('severityFilter').value;
+  var stateFilter    = document.getElementById('stateFilter').value;
+  var dateFilter     = document.getElementById('dateFilter').value; // formato yyyy-mm-dd
+
   document.querySelectorAll('#anomaliesTable tbody tr').forEach(function(row) {
-    row.style.display = filter && row.dataset.severity !== filter ? 'none' : '';
+    var matchSeverity = !severityFilter || row.dataset.severity === severityFilter;
+    var matchState    = !stateFilter    || row.dataset.state === stateFilter;
+    var matchDate     = !dateFilter     || row.dataset.date === dateFilter;
+    row.style.display = (matchSeverity && matchState && matchDate) ? '' : 'none';
   });
-});
+}
+
+document.getElementById('severityFilter').addEventListener('change', applyFilters);
+document.getElementById('stateFilter').addEventListener('change', applyFilters);
+document.getElementById('dateFilter').addEventListener('change', applyFilters);
 </script>
+<style>
+.table-button {
+  background-color: var(--color-secondary);
+  cursor: pointer;
+  text-decoration: none;
+}
+
+.table-button:hover {
+  background-color: var(--color-button-hover);
+  color: white;
+}
+</style>
 {% endblock %}

@@ -1,13 +1,27 @@
-from flask import render_template, request, jsonify
+from flask import render_template, request, jsonify, flash
+import flask
 
 from ..extensions import db
 from ..model import Anomaly
 
 
 def list_anomalies():
-    registros = Anomaly.query.order_by(Anomaly.timestamp.desc()).all()
-    return render_template('pages/anomalies.html', anomalies=registros)
+    page = request.args.get('page', 1, type=int)
+    per_page = 20  # nº de registos por página
 
+    pagination = Anomaly.query.order_by(Anomaly.timestamp.desc()) \
+                              .paginate(page=page, per_page=per_page, error_out=False)
+
+    start_page = max(1, pagination.page - 2)
+    end_page   = min(pagination.pages, pagination.page + 2)
+
+    return render_template(
+        'pages/anomalies.html',
+        anomalies=pagination.items,
+        pagination=pagination,
+        start_page=start_page,
+        end_page=end_page
+    )
 
 def get_anomaly(anomaly_id: int):
     anomaly = Anomaly.query.get_or_404(anomaly_id)
@@ -51,3 +65,12 @@ def delete_anomaly(anomaly_id: int):
     db.session.delete(anomaly)
     db.session.commit()
     return jsonify({'message': 'deleted'})
+
+def resolve_anomaly(anomaly_id: int):
+    anomaly = Anomaly.query.get_or_404(anomaly_id)
+    if anomaly.resolved:
+        flash("Anomalia já resolvida, não é possível resolver novamente", "Erro")
+        return jsonify({'message': 'anomaly already resolved'}), 400
+    anomaly.mark_resolved()
+    db.session.commit()
+    return jsonify({'message': 'resolved'})

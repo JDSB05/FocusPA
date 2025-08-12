@@ -594,6 +594,30 @@ think {
     overflow-x: auto;
     -webkit-overflow-scrolling: touch;
 }
+.pagination-nav .page-link {
+  display: inline-block;
+  padding: 0.5rem 0.75rem;
+  background: var(--color-secondary);
+  color: var(--color-text);
+  border: 1px solid var(--color-border1);
+  border-radius: 4px;
+  text-decoration: none;
+}
+
+.pagination-nav .page-link:hover {
+  background: var(--color-button-hover);
+}
+
+.pagination-nav .page-link.active {
+  background: var(--color-main);
+  font-weight: bold;
+}
+
+.pagination-nav .page-link.disabled {
+  pointer-events: none;
+  opacity: 0.5;
+}
+
 /* Table styles end */
 /* Dashboard styles */
 
