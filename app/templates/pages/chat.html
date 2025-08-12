@@ -7,15 +7,17 @@
   <div class="view conversation-view">
     <div id="chat-box">
       <div id="chat-placeholder" class="chat-placeholder">
-        Escreve uma pergunta para começar. O bot irá responder com base nas informações disponíveis nos logs e políticas.
+        Escreve uma pergunta para começar. O bot irá responder com base nas informações disponíveis nos logs e
+        políticas.
       </div>
     </div>
   </div>
-
   <div id="message-form">
     <form id="form" class="message-wrapper">
       <input id="message" type="text" placeholder="Escreve a tua pergunta..." required>
-      <button class="send-button" type="submit"><i class="fa fa-paper-plane"></i></button>
+      <button class="send-button" type="submit" id="send-btn">
+        <i class="fa fa-paper-plane"></i>
+      </button>
     </form>
   </div>
 </div>
@@ -29,30 +31,31 @@
 <script src="https://cdn.jsdelivr.net/npm/highlight.js@11.9.0/lib/highlight.min.js"></script>
 
 <script>
-    const form = document.getElementById('form');
-    const input = document.getElementById('message');
-    const chatBox = document.getElementById('chat-box');
+  const form = document.getElementById('form');
+  const input = document.getElementById('message');
+  const chatBox = document.getElementById('chat-box');
+  const sendBtn = document.getElementById('send-btn');
 
-    function addMessage(text, sender) {
-      const placeholder = document.getElementById('chat-placeholder');
-      if (placeholder && placeholder.style.display !== 'none') placeholder.style.display = 'none';
+  function addMessage(text, sender) {
+    const placeholder = document.getElementById('chat-placeholder');
+    if (placeholder && placeholder.style.display !== 'none') placeholder.style.display = 'none';
 
-      const msg = document.createElement('div');
-      msg.className = sender + ' message';
+    const msg = document.createElement('div');
+    msg.className = sender + ' message';
 
-      // 1) Render Markdown se for assistant; para o user podes também permitir Markdown, se quiseres.
-      let rendered = text;
-      try {
-        rendered = marked.parse(text); // Markdown -> HTML
-      } catch (e) {
-        // se o parser falhar, cai para texto simples com quebras de linha
-        rendered = text.replace(/\n/g, '<br>');
-      }
+    // 1) Render Markdown se for assistant; para o user podes também permitir Markdown, se quiseres.
+    let rendered = text;
+    try {
+      rendered = marked.parse(text); // Markdown -> HTML
+    } catch (e) {
+      // se o parser falhar, cai para texto simples com quebras de linha
+      rendered = text.replace(/\n/g, '<br>');
+    }
 
-      // 2) Sanitizar SEMPRE antes de inserir no DOM
-      const safeHtml = DOMPurify.sanitize(rendered);
+    // 2) Sanitizar SEMPRE antes de inserir no DOM
+    const safeHtml = DOMPurify.sanitize(rendered);
 
-      msg.innerHTML = `
+    msg.innerHTML = `
       <div class="identity">
         <i class="${sender === 'user' ? 'user-icon' : 'gpt user-icon'}">
           ${sender === 'user' ? '{{ current_user.username[0]|upper }}' : 'IA'}
@@ -63,41 +66,49 @@
       </div>
     `;
 
-      chatBox.appendChild(msg);
+    chatBox.appendChild(msg);
 
-      // 3) (Opcional) realçar código depois de inserir
-      if (window.hljs) hljs.highlightAll();
+    // 3) (Opcional) realçar código depois de inserir
+    if (window.hljs) hljs.highlightAll();
 
-      chatBox.scrollTop = chatBox.scrollHeight;
-    }
+    chatBox.scrollTop = chatBox.scrollHeight;
+  }
 
-    form.addEventListener('submit', async (e) => {
-        e.preventDefault();
-        const question = input.value.trim();
-        if (!question) return;
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const question = input.value.trim();
+    if (!question) return;
 
-        addMessage(question, 'user');
-        input.value = '';
+    addMessage(question, 'user');
+    input.value = '';
 
-        try {
-            const response = await fetch('/rag', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ question })
-            });
+    sendBtn.disabled = true; 
+    sendBtn.classList.add('loading');
+    sendBtn.innerHTML = '<i class="fa fa-spinner"></i>';
 
-            const data = await response.json();
-            addMessage(data.answer || '[Erro na resposta]', 'assistant');
-        } catch (error) {
-            if (response.status === 401) {
-                addMessage('[Não autenticado. Por favor inicia sessão.]', 'assistant');
-                console.error('Não autenticado:', error);
-                return;
-            }
+    try {
+        const response = await fetch('/rag', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ question })
+        });
+
+        const data = await response.json();
+        addMessage(data.answer || '[Erro na resposta]', 'assistant');
+    } catch (error) {
+        if (response?.status === 401) {
+            addMessage('[Não autenticado. Por favor inicia sessão.]', 'assistant');
+            console.error('Não autenticado:', error);
+        } else {
             console.error('Erro:', error);
             addMessage('[Erro ao contactar o servidor]', 'assistant');
         }
-    });
+    } finally {
+        sendBtn.disabled = false; // desbloqueia
+        sendBtn.classList.remove('loading');
+        sendBtn.innerHTML = '<i class="fa fa-paper-plane"></i>';
+    }
+});
 </script>
 <style>
   .chat-container {
@@ -106,8 +117,29 @@
     display: flex;
     flex-direction: column;
   }
+
   p {
-    margin: 0 0 1.5em 0;
+    margin: 0 0 1em 0;
+    padding-top: 5px;
+  }
+
+  .send-button.loading i {
+    animation: spin 1s linear infinite;
+  }
+
+  .send-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+  @keyframes spin {
+    0% {
+      transform: rotate(0deg);
+    }
+
+    100% {
+      transform: rotate(360deg);
+    }
   }
 </style>
 {% endblock %}

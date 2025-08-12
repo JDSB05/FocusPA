@@ -17,6 +17,7 @@
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/toastify-js/src/toastify.min.css">
 </head>
 <body>
+  {% include 'components/modal.html' %}
   <!-- Sidebar unificado -->
   <nav id="sidebar">
     <div class="float-top">
@@ -157,6 +158,41 @@
     }
   });
 </script>
+<script>
+  function showModal({ title = '', body = '', actions = [] }) {
+    document.getElementById('modal-title').innerHTML = title;
+    document.getElementById('modal-body').innerHTML  = body;
+    const actionsContainer = document.getElementById('modal-actions');
+    actionsContainer.innerHTML = '';
+    actions.forEach(action => {
+      const btn = document.createElement('button');
+      btn.className = 'btn';
+      btn.textContent = action.label;
+      btn.onclick = () => { action.onClick(); hideModal(); };
+      actionsContainer.appendChild(btn);
+    });
+    document.getElementById('generic-modal').style.display = 'flex';
+    // Fechar no ESC ou ao clicar fora
+    document.addEventListener('keydown', escListener);
+  }
+
+  function hideModal() {
+    document.getElementById('generic-modal').style.display = 'none';
+    document.removeEventListener('keydown', escListener);
+  }
+
+  function escListener(e) {
+    if (e.key === 'Escape') hideModal();
+  }
+
+  // Fechar ao clicar no X
+  document.getElementById('modal-close').addEventListener('click', hideModal);
+  // Fechar ao clicar fora da caixa
+  document.getElementById('generic-modal').addEventListener('click', e => {
+    if (e.target.id === 'generic-modal') hideModal();
+  });
+</script>
+
   {% block scripts %}
   {% endblock %}
 </body>

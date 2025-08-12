@@ -64,18 +64,6 @@ def add_policy(name: str, content: str, base_meta: dict | None = None):
     db.session.add(policy)
     db.session.commit()
 
-def delete_policy(name: str):
-    """Remove todos os chunks da política no Chroma e a entrada na BD."""
-    col = chroma.get_or_create_collection("policies")
-    print(f"[INFO] [Chroma] Deleting policy '{name}' (by metadata)")
-    # Apaga TUDO com metadata name=<name> (em vez de só 1 id)
-    col.delete(where={"name": name})
-    print("[INFO] [Chroma] Policy deleted from ChromaDB")
-
-    policy = Policy.query.filter_by(name=name).first()
-    if policy:
-        db.session.delete(policy)
-        db.session.commit()
 
 def policy_new():
     if request.method == 'POST':
