@@ -1,7 +1,7 @@
 {% extends 'layout.html' %}
 {% block title %}Chat com LLM (RAG){% endblock %}
 {% block content %}
-<div class="chat-container" style="">
+<div class="chat-container">
   <div class="view new-chat-view"></div>
 
   <div class="view conversation-view">
@@ -35,6 +35,8 @@
   const input = document.getElementById('message');
   const chatBox = document.getElementById('chat-box');
   const sendBtn = document.getElementById('send-btn');
+  let controller = null;
+  let isStreaming = false;
 
   function addMessage(text, sender) {
     const placeholder = document.getElementById('chat-placeholder');
@@ -43,73 +45,135 @@
     const msg = document.createElement('div');
     msg.className = sender + ' message';
 
-    // 1) Render Markdown se for assistant; para o user podes também permitir Markdown, se quiseres.
-    let rendered = text;
-    try {
-      rendered = marked.parse(text); // Markdown -> HTML
-    } catch (e) {
-      // se o parser falhar, cai para texto simples com quebras de linha
-      rendered = text.replace(/\n/g, '<br>');
-    }
-
-    // 2) Sanitizar SEMPRE antes de inserir no DOM
-    const safeHtml = DOMPurify.sanitize(rendered);
-
-    msg.innerHTML = `
+    const identityHtml = `
       <div class="identity">
         <i class="${sender === 'user' ? 'user-icon' : 'gpt user-icon'}">
           ${sender === 'user' ? '{{ current_user.username[0]|upper }}' : 'IA'}
         </i>
-      </div>
-      <div class="content">
-        ${safeHtml}
-      </div>
-    `;
+      </div>`;
 
+    const content = document.createElement('div');
+    content.className = 'content';
+
+    if (sender === 'assistant') {
+      const pre = document.createElement('pre');
+      pre.className = 'streaming';
+      pre.style.whiteSpace = 'pre-wrap';
+      pre.style.margin = 0;
+      pre.textContent = text || '';
+      content.appendChild(pre);
+    } else {
+      const safeUser = DOMPurify.sanitize(text).replace(/\n/g, '<br>');
+      content.innerHTML = safeUser;
+    }
+
+    msg.innerHTML = identityHtml;
+    msg.appendChild(content);
     chatBox.appendChild(msg);
-
-    // 3) (Opcional) realçar código depois de inserir
-    if (window.hljs) hljs.highlightAll();
-
     chatBox.scrollTop = chatBox.scrollHeight;
+    return msg;
   }
+
+  async function streamAnswer(question, targetMsgEl) {
+    controller = new AbortController();
+    const signal = controller.signal;
+    isStreaming = true;
+    updateSendButton();
+
+    const response = await fetch('/rag', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ question }),
+      signal
+    });
+
+    if (!response.ok) {
+      let errText = '[Erro ao contactar o servidor]';
+      try {
+        const data = await response.json();
+        errText = data?.error ? `[${data.error}]` : errText;
+      } catch (e) {
+        if (response.status === 401) errText = '[Não autenticado. Por favor inicia sessão.]';
+      }
+      const content = targetMsgEl.querySelector('.content');
+      content.textContent = errText;
+      isStreaming = false;
+      updateSendButton();
+      return;
+    }
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let accum = '';
+    const pre = targetMsgEl.querySelector('pre.streaming');
+
+    try {
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        const chunk = decoder.decode(value, { stream: true });
+        accum += chunk;
+        if (pre) {
+          pre.textContent = accum;
+          chatBox.scrollTop = chatBox.scrollHeight;
+        }
+      }
+    } catch (err) {
+      console.log('[INFO] Stream cancelada/interrompida:', err);
+    }
+
+    const rendered = marked.parse(accum || '');
+    const safeHtml = DOMPurify.sanitize(rendered);
+    const content = targetMsgEl.querySelector('.content');
+    content.innerHTML = safeHtml;
+    if (window.hljs) hljs.highlightAll();
+    chatBox.scrollTop = chatBox.scrollHeight;
+
+    isStreaming = false;
+    updateSendButton();
+  }
+
+  function cancelAnswer() {
+    if (controller) {
+      controller.abort();
+      controller = null;
+      console.log('[INFO] Pedido cancelado pelo utilizador.');
+    }
+    isStreaming = false;
+    updateSendButton();
+  }
+
+  function updateSendButton() {
+  if (isStreaming) {
+    sendBtn.innerHTML = '<i class="fa fa-stop"></i>';
+    sendBtn.classList.add('cancel-mode');
+    sendBtn.type = 'button'; // evita validação do form
+  } else {
+    sendBtn.innerHTML = '<i class="fa fa-paper-plane"></i>';
+    sendBtn.classList.remove('cancel-mode');
+    sendBtn.type = 'submit'; // volta a enviar perguntas normalmente
+  }
+}
 
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
+
+    if (isStreaming) {
+      cancelAnswer();
+      return;
+    }
+
     const question = input.value.trim();
     if (!question) return;
 
-    addMessage(question, 'user');
+    const userMsg = addMessage(question, 'user');
+    const assistantMsg = addMessage('', 'assistant');
+
     input.value = '';
-
-    sendBtn.disabled = true; 
-    sendBtn.classList.add('loading');
-    sendBtn.innerHTML = '<i class="fa fa-spinner"></i>';
-
-    try {
-        const response = await fetch('/rag', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ question })
-        });
-
-        const data = await response.json();
-        addMessage(data.answer || '[Erro na resposta]', 'assistant');
-    } catch (error) {
-        if (response?.status === 401) {
-            addMessage('[Não autenticado. Por favor inicia sessão.]', 'assistant');
-            console.error('Não autenticado:', error);
-        } else {
-            console.error('Erro:', error);
-            addMessage('[Erro ao contactar o servidor]', 'assistant');
-        }
-    } finally {
-        sendBtn.disabled = false; // desbloqueia
-        sendBtn.classList.remove('loading');
-        sendBtn.innerHTML = '<i class="fa fa-paper-plane"></i>';
-    }
-});
+    await streamAnswer(question, assistantMsg);
+  });
 </script>
+
 <style>
   .chat-container {
     justify-content: space-between;
@@ -117,29 +181,14 @@
     display: flex;
     flex-direction: column;
   }
-
-  p {
-    margin: 0 0 1em 0;
-    padding-top: 5px;
+  p { margin: 0 0 1em 0; padding-top: 5px; }
+  .send-button.cancel-mode {
+    background-color: #f44336;
+    color: white;
   }
-
-  .send-button.loading i {
-    animation: spin 1s linear infinite;
+  .send-button.cancel-mode:hover {
+    background-color: #d32f2f;
   }
-
-  .send-button:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-  @keyframes spin {
-    0% {
-      transform: rotate(0deg);
-    }
-
-    100% {
-      transform: rotate(360deg);
-    }
-  }
+  .send-button:disabled { opacity: 0.5; cursor: not-allowed; }
 </style>
 {% endblock %}
