@@ -1,0 +1,130 @@
+{% extends 'layout.html' %}
+{% block title %}Forense{% endblock %}
+
+{% block content %}
+<div class="container">
+    <h1>Investigações</h1>
+
+    <div class="mb-3 d-flex gap-3 align-items-center">
+        <div>
+            <label>Filtrar por estado:</label>
+            <select id="stateFilter" class="form-select w-auto d-inline">
+                <option value="">Todos</option>
+                <option value="open">Aberto</option>
+                <option value="in_progress">Em andamento</option>
+                <option value="closed">Concluído</option>
+            </select>
+        </div>
+        <div>
+            <label>Filtrar por data:</label>
+            <input type="date" id="dateFilter" class="form-control w-auto d-inline" />
+        </div>
+    </div>
+
+    <div class="table-responsive" id="investigationsTable">
+        <table class="table-access-log table table-striped">
+            <thead>
+                <tr>
+                    <th>Título</th>
+                    <th>Responsável</th>
+                    <th>Data de início</th>
+                    <th>Última atualização</th>
+                    <th>Estado</th>
+                    <th>Anomalias</th>
+                    <th>Ações</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for i in investigations %}
+                <tr data-state="{{ i.state }}" data-date="{{ i.created_at.strftime('%Y-%m-%d') }}">
+                    <td>{{ i.title }}</td>
+                    <td>{{ i.responsible.username if i.responsible else 'Não definido' }}</td>
+                    <td>{{ i.created_at.strftime('%Y-%m-%d %H:%M:%S') }}</td>
+                    <td>{{ i.updated_at.strftime('%Y-%m-%d %H:%M:%S') }}</td>
+                    <td>
+                        {% if i.state == 'open' %}<span class="badge bg-warning">Aberto</span>{% endif %}
+                        {% if i.state == 'in_progress' %}<span class="badge bg-info">Em andamento</span>{% endif %}
+                        {% if i.state == 'closed' %}<span class="badge bg-success">Concluído</span>{% endif %}
+                    </td>
+                    <td>
+                        {{ i.anomalies|length }}
+                        {% if i.anomalies|length > 0 %}
+                        (Críticas: {{ i.anomalies|selectattr("severity", "equalto", "high")|list|length }})
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if i.state != 'closed' %}
+                        <button class="table-button" onclick="showModal({
+                                title: 'Concluir Investigação',
+                                body: '<p>Tens a certeza que queres concluir esta investigação?</p>',
+                                actions: [
+                                    { label: 'Concluir', onClick: () => {
+                                        fetch(`/investigations/{{ i.id }}/complete`, { method: 'POST' })
+                                            .then(() => location.reload());
+                                    }},
+                                    { label: 'Cancelar', onClick: () => {} }
+                                ]
+                            })">Concluir</button>
+                        {% endif %}
+                        <button class="table-button" onclick="window.location.href='{{ url_for('investigation.list', id=i.id) }}'">
+                            Ver
+                        </button>
+                    </td>
+                </tr>
+                {% else %}
+                <tr>
+                    <td colspan="6">Nenhuma investigação registada.</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+
+        {% if pagination.pages > 1 %}
+        <nav class="pagination-nav mt-3 d-flex gap-1">
+            <a class="page-link {{ 'disabled' if not pagination.has_prev }}"
+                href="{{ url_for('investigation.list_investigations', page=1) }}">«</a>
+            <a class="page-link {{ 'disabled' if not pagination.has_prev }}"
+                href="{{ url_for('investigation.list_investigations', page=pagination.prev_num or 1) }}">‹</a>
+
+            {% for p in range(start_page, end_page + 1) %}
+            <a class="page-link {{ 'active' if p == pagination.page }}"
+                href="{{ url_for('investigation.list_investigations', page=p) }}">{{ p }}</a>
+            {% endfor %}
+
+            <a class="page-link {{ 'disabled' if not pagination.has_next }}"
+                href="{{ url_for('investigation.list_investigations', page=pagination.next_num or pagination.page) }}">›</a>
+            <a class="page-link {{ 'disabled' if not pagination.has_next }}"
+                href="{{ url_for('investigation.list_investigations', page=pagination.pages) }}">»</a>
+        </nav>
+        {% endif %}
+    </div>
+</div>
+
+<script>
+    function applyFilters() {
+        const stateFilter = document.getElementById('stateFilter').value;
+        const dateFilter = document.getElementById('dateFilter').value;
+
+        document.querySelectorAll('#investigationsTable tbody tr').forEach(row => {
+            const matchState = !stateFilter || row.dataset.state === stateFilter;
+            const matchDate = !dateFilter || row.dataset.date === dateFilter;
+            row.style.display = (matchState && matchDate) ? '' : 'none';
+        });
+    }
+
+    document.getElementById('stateFilter').addEventListener('change', applyFilters);
+    document.getElementById('dateFilter').addEventListener('change', applyFilters);
+</script>
+
+<style>
+    .table-button {
+        background-color: var(--color-secondary);
+        cursor: pointer;
+        text-decoration: none;
+    }
+
+    .badge {
+        font-size: 0.9rem;
+    }
+</style>
+{% endblock %}

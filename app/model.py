@@ -56,12 +56,46 @@ class Anomaly(db.Model):
     resolved    = db.Column(db.Boolean, default=False)
     resolved_at = db.Column(db.DateTime, nullable=True)
 
+    investigations = db.relationship(
+        "Investigation",
+        secondary="investigation_anomalies",
+        back_populates="anomalies"
+    )
+
     def mark_resolved(self):
         self.resolved = True
         self.resolved_at = datetime.now()
 
     def __repr__(self):
         return f"<Anomaly {self.id} sev={self.severity}>"
+
+class Investigation(db.Model):
+    __tablename__ = "investigations"
+    id = db.Column(db.Integer, primary_key=True)
+    title = db.Column(db.String(150), nullable=False)
+    description = db.Column(db.Text, nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.now)
+    updated_at = db.Column(db.DateTime, default=datetime.now, onupdate=datetime.now)
+    state = db.Column(db.String(20), default="open")  # open, in_progress, closed
+    responsible_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True)
+
+    responsible = db.relationship("User", backref=db.backref("investigations", lazy="dynamic"))
+
+    # ligação N:N com anomalias
+    anomalies = db.relationship(
+        "Anomaly",
+        secondary="investigation_anomalies",
+        back_populates="investigations"
+    )
+
+    def __repr__(self):
+        return f"<Investigation {self.id} title={self.title} state={self.state}>"
+
+investigation_anomalies = db.Table(
+    "investigation_anomalies",
+    db.Column("investigation_id", db.Integer, db.ForeignKey("investigations.id"), primary_key=True),
+    db.Column("anomaly_id", db.Integer, db.ForeignKey("anomalies.id"), primary_key=True)
+)
 
 class AccessLog(db.Model):
     __tablename__ = "access_logs"
@@ -96,3 +130,34 @@ def create_test_anomalies():
         print(f" - {a}")
     db.session.bulk_save_objects(anomalies)
     db.session.commit()
+
+def create_investigation(title, description, anomaly_ids, responsible_id=None):
+    """
+    Cria uma nova investigação forense e associa anomalias existentes.
+    
+    :param title: Título da investigação
+    :param description: Descrição da investigação
+    :param anomaly_ids: Lista de IDs de anomalias a associar
+    :param responsible_id: ID do utilizador responsável (opcional)
+    :return: Investigation criada
+    """
+    # buscar anomalias da BD
+    anomalies = Anomaly.query.filter(Anomaly.id.in_(anomaly_ids)).all()
+
+    if not anomalies:
+        raise ValueError("Nenhuma anomalia encontrada para os IDs fornecidos.")
+
+    investigation = Investigation(
+        title=title,
+        description=description,
+        responsible_id=responsible_id
+    )
+
+    # associar as anomalias à investigação
+    investigation.anomalies.extend(anomalies)
+
+    db.session.add(investigation)
+    db.session.commit()
+
+    print(f"Investigação '{title}' criada com {len(anomalies)} anomalias associadas.")
+    return investigation

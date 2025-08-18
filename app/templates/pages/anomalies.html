@@ -55,6 +55,20 @@
           })">
               Marcar como resolvido
             </button>
+
+            <button class="table-button" onclick="showModal({
+                          title: 'Iniciar Investigação',
+                          body: '<p>Queres iniciar uma investigação com base nesta anomalia?</p>',
+                          actions: [
+                            { label: 'Iniciar', onClick: () => {
+                                fetch(`/investigations/start/{{ a.id }}`, { method: 'POST' })
+                                  .then(() => location.reload());
+                              }},
+                            { label: 'Cancelar', onClick: () => {} },
+                          ]
+                        })">
+              Iniciar investigação
+            </button>
           </td>
         </tr>
         {% else %}

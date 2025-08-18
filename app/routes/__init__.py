@@ -2,6 +2,7 @@ from .auth import auth_bp
 from .main import main_bp
 from .policy import policy_bp
 from .anomaly import anomaly_bp
+from .investigation import investigation_bp
 from .accesslog import accesslog_bp
 from .rag import rag_bp
 
@@ -10,6 +11,7 @@ __all__ = [
     'main_bp',
     'policy_bp',
     'anomaly_bp',
+    'investigation_bp',
     'accesslog_bp',
     'rag_bp',
 ]

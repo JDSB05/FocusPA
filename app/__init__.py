@@ -13,10 +13,11 @@ from .routes import (
     auth_bp,
     policy_bp,
     anomaly_bp,
+    investigation_bp,
     accesslog_bp,
     rag_bp,
 )
-from .model import User, create_test_anomalies
+from .model import Anomaly, User, create_test_anomalies, create_investigation
 
 
 def create_app(config_class: type = Config) -> Flask:
@@ -54,6 +55,7 @@ def create_app(config_class: type = Config) -> Flask:
     app.register_blueprint(main_bp)
     app.register_blueprint(policy_bp)
     app.register_blueprint(anomaly_bp)
+    app.register_blueprint(investigation_bp)
     app.register_blueprint(accesslog_bp)
     app.register_blueprint(rag_bp)
 
@@ -61,6 +63,29 @@ def create_app(config_class: type = Config) -> Flask:
     with app.app_context():
         db.create_all()
         create_test_anomalies()
+
+        # Garante que existe um utilizador admin
+        user = User.query.get(1)
+        if not user:
+            user = User(username="admin", email="admin@example.com")
+            user.set_password("admin123")
+            db.session.add(user)
+            db.session.commit()
+            print(f"Utilizador admin criado com id={user.id}")
+        else:
+            print(f"Utilizador admin já existe com id={user.id}")
+
+        # Criar investigação associada às primeiras 3 anomalias
+        anomaly_ids = [a.id for a in Anomaly.query.limit(3).all()]
+        investigation = create_investigation(
+            title="Investigação suspeita no Elasticsearch",
+            description="Análise aprofundada de padrões anómalos vindos do cluster ES.",
+            anomaly_ids=anomaly_ids,
+            responsible_id=1  # opcional, ID do user responsável
+        )
+
+        print(investigation)
+        print(investigation.anomalies)  # lista de anomalias ligadas
 
     create_fake_winlogs()
     # Scheduler para deteção automática

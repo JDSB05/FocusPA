@@ -75,12 +75,6 @@ def access_control():
                            daily_labels=daily_labels,
                            daily_counts=daily_counts)
 
-
-
-def forensic():
-    return render_template('pages/forensic.html')
-
-
 def compliance():
     total = Anomaly.query.count()
     resolved_count = Anomaly.query.filter_by(resolved=True).count()
