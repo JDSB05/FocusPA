@@ -1,0 +1,34 @@
+{% extends "layout.html" %}
+{% block title %}Investigação #{{ investigation.id }}{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <h1>Investigação #{{ investigation.id }}</h1>
+
+    <div class="card mb-3">
+        <div class="card-body">
+            <h5 class="card-title">{{ investigation.title }}</h5>
+            <p class="card-text"><strong>Descrição:</strong> {{ investigation.description or "Sem descrição" }}</p>
+            <p class="card-text"><strong>Estado:</strong> {{ investigation.state }}</p>
+            <p class="card-text"><strong>Criada em:</strong> {{ investigation.created_at.strftime("%d/%m/%Y %H:%M") }}</p>
+            <p class="card-text"><strong>Atualizada em:</strong> {{ investigation.updated_at.strftime("%d/%m/%Y %H:%M") }}</p>
+            <p class="card-text"><strong>Responsável:</strong> {{ investigation.responsible.username if investigation.responsible else "—" }}</p>
+        </div>
+    </div>
+
+    <h3>Anomalias associadas</h3>
+    {% if investigation.anomalies %}
+        <ul class="list-group mb-3">
+        {% for anomaly in investigation.anomalies %}
+            <li class="list-group-item">
+                <strong>{{ anomaly.id }}:</strong> {{ anomaly.description }}
+            </li>
+        {% endfor %}
+        </ul>
+    {% else %}
+        <p>Sem anomalias ligadas.</p>
+    {% endif %}
+
+    <a href="{{ url_for('investigation.list') }}" class="btn btn-secondary">Voltar</a>
+</div>
+{% endblock %}

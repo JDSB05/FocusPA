@@ -37,3 +37,7 @@ def list_investigations():
         start_page=start_page,
         end_page=end_page
     )
+
+def investigation_detail(id):
+    investigation = Investigation.query.get_or_404(id)
+    return render_template("pages/investigation_detail.html", investigation=investigation)
