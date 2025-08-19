@@ -47,14 +47,17 @@ class Policy(db.Model):
 
 class Anomaly(db.Model):
     __tablename__ = "anomalies"
-    id = db.Column(db.Integer, primary_key=True)
-    log_id = db.Column(db.String(255), unique=False, nullable=False) 
+    id          = db.Column(db.Integer, primary_key=True)
+    log_id      = db.Column(db.String(255), nullable=False) 
     timestamp   = db.Column(db.DateTime, default=datetime.now, index=True)
     source      = db.Column(db.String(120), nullable=False)   # ex. "elasticsearch", "chroma"
     description = db.Column(db.Text, nullable=False)
     severity    = db.Column(db.String(20), default="low")     # low, medium, high
     resolved    = db.Column(db.Boolean, default=False)
     resolved_at = db.Column(db.DateTime, nullable=True)
+    event_code  = db.Column(db.String(20), nullable=True, index=True)
+    user        = db.Column(db.String(255), nullable=True, index=True)
+    reasoning   = db.Column(db.Text, nullable=True)
 
     investigations = db.relationship(
         "Investigation",

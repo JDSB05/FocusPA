@@ -1,121 +1,187 @@
+# app/services/anomaly_service.py
 import json
-from datetime import datetime
+import logging
+from datetime import datetime, timedelta
+
 from ..extensions import db
 from ..model import Anomaly
-from app.controllers.rag_controller import ask_llm, query_hybrid_rag
-from datetime import datetime, timedelta
-from dateutil import parser
-from app.services.elastic import es
+from app.controllers.rag_controller import es_search, strip_json_markdown, ask_llm, _g
 
-def classify_events_with_rag(events: list[dict]) -> list[dict]:
-    """
-    Envia vários eventos de uma vez para a pipeline RAG e espera
-    um array JSON de classificação na mesma ordem.
-    """
-    # Extrai só as mensagens
-    messages = [evt["message"] for evt in events]
+logger = logging.getLogger(__name__)
 
-    # Prepara o prompt que a query_hybrid_rag vai usar internamente
-    # (ela já monta o contexto ES + Chroma)
-    batch_prompt = (
-        "Você receberá um array de logs (strings). "
-        "Para cada log, responda em JSON com os campos:\n"
-        '  {"anomaly": true|false, "description": "...", "severity": "low|medium|high"}\n'
-        "Retorne um array JSON com esses objetos na MESMA ordem.\n\n"
-        f"{json.dumps(messages, ensure_ascii=False)}"
-    )
 
-    # Chama a pipeline RAG
-    resp = query_hybrid_rag(batch_prompt)
+def classify_events_with_rag(question: str, context: str) -> str:
+    prompt = f"""
+Classifica os eventos da seguinte questão de segurança: {question}
+Com base no seguinte contexto: {context}
 
-    # Tenta fazer o parse do JSON de volta
+Regras:
+- Responder apenas em JSON válido.
+- Se forem vários eventos: [
+    {{
+      "id": "...",
+      "event_code": "...",
+      "user": "...",
+      "timestamp": "...",
+      "description": "...",
+      "severity": "high|medium",
+      "reasoning": "..."
+    }},
+    ...
+  ]
+- Só devolver eventos que representem risco real (ignorar benign/normal).
+- Se não houver dados suficientes para classificar, devolver apenas: null
+"""
     try:
-        return json.loads(resp)
-    except (json.JSONDecodeError, TypeError):
-        # Em caso de falha, retorna fallback “sem anomalias”
-        return [{"anomaly": False, "description": m, "severity": "low"} for m in messages]
-    
-def fetch_recent_events(window_minutes: int = 60, max_events: int = 100):
-    """
-    Busca no Elasticsearch os logs dos últimos `window_minutes` minutos
-    e retorna uma lista de dicts contendo mensagem, timestamp e fonte.
-    """
-    # Define o intervalo de tempo
-    now = datetime.now()
-    start = now - timedelta(minutes=window_minutes)
+        print("[Classificação] A enviar prompt ao LLM...")
+        text = ask_llm(prompt, "deepseek-coder-v2").strip()
+        text = strip_json_markdown(text)
 
-    # Monta a consulta Elasticsearch para buscar logs recentes
-    try:
-        resp = es.search(
-            index="winlog-*",
-            size=max_events,
-            query={
-                "range": {
-                    "@timestamp": {
-                        "gte": start.isoformat(),
-                        "lte": now.isoformat()
-                    }
-                }
-            },
-            sort=[{"@timestamp": {"order": "desc"}}],
-            _source=["message", "@timestamp"] # type: ignore
-        )
+        if text.lower() == "null":
+            return "null"
+
+        parsed = json.loads(text)
+
+        if isinstance(parsed, list):
+            valid = all(
+                isinstance(e, dict) and {"id", "description", "severity"} <= set(e.keys())
+                for e in parsed
+            )
+            if valid:
+                return json.dumps(parsed)
+            logger.warning("[Classificação] Lista inválida recebida.")
+            return "null"
+
+        logger.warning(f"[Classificação] Tipo inesperado: {type(parsed)}")
+        return "null"
+
     except Exception as e:
-        print(f"[WARN] [Elasticsearch] falha ao buscar eventos recentes: {e}")
-        return []
+        logger.error(f"[Classificação] Erro: {e}")
+        return "null"
 
-    hits = resp.get("hits", {}).get("hits", [])
+
+def fetch_recent_events(max_events: int = 100, minutes: int = 15):
+    now = datetime.utcnow()
+    start = now - timedelta(minutes=minutes)
+
+    query = {
+        "query": {"range": {"@timestamp": {"gte": start.isoformat() + "Z", "lte": now.isoformat() + "Z"}}},
+        "_source": ["@timestamp", "event.code", "winlog.event_id", "user.name", "message", "log.file.path"],
+        "size": max_events
+    }
+    logger.info(f"[AnomalyService] A buscar eventos recentes desde {start} até {now}...")
+    resp = es_search(json.dumps(query))
+    logger.info(f"[AnomalyService] Encontrados {len(resp)} eventos recentes.")
+
     events = []
-    for hit in hits:
-        src = hit.get("_source", {})
-        ts_raw = src.get("@timestamp")
-        try:
-            ts = parser.isoparse(ts_raw)
-        except Exception:
-            ts = datetime.utcnow()
+    for source in resp:  # resp já vem flatten com _id no topo, _source expandido
+        logger.debug(f"[AnomalyService] Evento encontrado: {source}")
         events.append({
-            "message": src.get("message", ""),
-            "timestamp": ts,
-            "source": "elasticsearch"
+            "es_id": source.get("_id"),
+            "timestamp": source.get("@timestamp"),
+            "event_code": _g(source, "event.code"),
+            "event_id": _g(source, "winlog.event_id"),
+            "user": _g(source, "user.name"),
+            "message": source.get("message"),
+            "path": _g(source, "log.file.path"),
+            "source": "winlogbeat"
         })
-
-    print(f"[INFO] [fetch_recent_events] retornou {len(events)} eventos dos últimos {window_minutes} minutos")
+        print(f"[AnomalyService] Evento adicionado: {events[-1]}")
     return events
 
-def detect_and_create_anomalies():
-    print("[INFO] [AnomalyService] Detectando e criando anomalias...")
-    # 1) Busca os eventos recentes no Elastic, incluindo o _id de cada hit
-    events = fetch_recent_events()  
-    # cada evento deve ter agora: { "es_id": hit["_id"], "timestamp": ..., "message": ..., ... }
 
+def detect_and_create_anomalies():
+    """Vai buscar eventos recentes, classifica-os em batch com RAG e guarda falhas de segurança."""
+    print("[AnomalyService] A iniciar deteção de anomalias...")
+
+    events = fetch_recent_events()
     if not events:
+        print("[AnomalyService] Nenhum evento encontrado.")
         return
 
-    # 2) Carrega em um set todos os log_id (ou seja, os es_id) já gravados
-    existing_ids = {
-        row.log_id
-        for row in Anomaly.query.with_entities(Anomaly.log_id).all()
-    }
+    existing_ids = {row.log_id for row in Anomaly.query.with_entities(Anomaly.log_id).all()}
+    print(f"[AnomalyService] IDs existentes: {len(existing_ids)}")
 
-    # 3) Classifica todos de uma vez (RAG)
-    results = classify_events_with_rag(events)
+    event_payload = [
+        {
+            "id": evt.get("es_id"),
+            "event_id": evt.get("event_id"),
+            "event_code": evt.get("event_code"),
+            "user": evt.get("user"),
+            "message": evt.get("message"),
+            "path": evt.get("path"),
+            "timestamp": evt.get("timestamp"),
+        }
+        for evt in events if evt.get("es_id")
+    ]
 
-    # 4) Para cada evento resultante, insere se for anomalia *e* não existir ainda
-    for evt, result in zip(events, results):
+    print(f"[AnomalyService] Eventos a classificar: {len(event_payload)}")
+    if not event_payload:
+        print("[AnomalyService] Nenhum evento válido para classificação.")
+        return
+
+    prompt = f"""
+Classifica os seguintes eventos de log do Windows.
+Devolve apenas as **falhas de segurança confirmadas** (ignora benign/normal).
+Formato: array JSON de objetos:
+{{"id (igual ao do log que está a ser classificado, não cries nenhum)","event_code","user","timestamp","description","severity","reasoning"}}
+
+Regras fortes:
+- Usa os IDs de evento quando existirem:
+  - 4732/4728: membro adicionado a *security-enabled (local/global)* (marca MEDIUM/HIGH se grupo = Administrators/Domain Admins).
+  - 4720: conta de utilizador criada (MEDIUM/HIGH).
+  - 1102: log de auditoria limpo (HIGH).
+  - 4719: política de auditoria alterada (HIGH).
+  - 7045: serviço instalado (MEDIUM/HIGH).
+  - 4625: muitas falhas de logon num curto período (MEDIUM).
+- Não devolver “sucesso genérico” sem risco claro.
+- Só incluir eventos com risco real; caso contrário, omite-os.
+
+Eventos:
+{json.dumps(event_payload, ensure_ascii=False)}
+"""
+    print("[AnomalyService] A enviar prompt ao LLM para classificação...")
+    raw = classify_events_with_rag(prompt, "")
+    if raw == "null":
+        print("[AnomalyService] Nenhuma anomalia detectada pelo LLM.")
+        return
+
+    try:
+        anomalies_from_llm = json.loads(raw)
+    except Exception as e:
+        logger.error("[AnomalyService] Erro a interpretar resposta LLM: %s", e)
+        return
+
+    new_anomalies = []
+    for evt in events:
         log_id = evt.get("es_id")
-        # pula se não for anomalia ou se esse evento já estiver gravado
-        if not result.get("anomaly") or log_id in existing_ids:
+        match = next((a for a in anomalies_from_llm if a.get("id") == log_id), None)
+        if not match or log_id in existing_ids:
             continue
 
-        anomaly = Anomaly(
-            log_id      = log_id, # type: ignore
-            timestamp   = evt.get("timestamp"), # type: ignore
-            source      = evt.get("source", "winlogbeat"), # type: ignore
-            description = result.get("description", ""), # type: ignore
-            severity    = result.get("severity", "medium") # type: ignore
-        )
-        db.session.add(anomaly)
-        print(f"[INFO] [AnomalyService] Nova anomalia: {anomaly.description} (log_id={log_id})")
+        sev = (match.get("severity") or "").lower()
+        if sev not in {"medium", "high"}:
+            continue  
 
-    # 5) Persiste tudo de uma vez
-    db.session.commit()
+        anomaly = Anomaly(
+            log_id=log_id, # type: ignore
+            timestamp=evt.get("timestamp"), # type: ignore
+            source=evt.get("source", "elasticsearch"), # type: ignore
+            description=match.get("description", ""), # type: ignore
+            severity=match.get("severity", "medium"), # type: ignore
+            resolved=False, # type: ignore
+            resolved_at=None, # type: ignore
+            event_code=match.get("event_code") or evt.get("event_code"), # type: ignore
+            user=match.get("user") or evt.get("user"), # type: ignore
+            reasoning=match.get("reasoning", "") # type: ignore
+        )
+        new_anomalies.append(anomaly)
+        print(
+            f"[AnomalyService] Nova anomalia detectada: {anomaly.description} "
+            f"(sev={anomaly.severity}, log_id={log_id})"
+        )
+
+    if new_anomalies:
+        db.session.bulk_save_objects(new_anomalies)
+        db.session.commit()
+        print(f"[AnomalyService] {len(new_anomalies)} anomalias guardadas.")
