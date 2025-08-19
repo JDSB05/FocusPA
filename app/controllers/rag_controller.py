@@ -1,3 +1,4 @@
+# /controllers/rag_controller.py
 from datetime import datetime
 import os
 import re
@@ -95,15 +96,49 @@ def strip_json_markdown(text: str) -> str:
 
     return text.strip()
 
+def build_es_query_from_events(events_json):
+    if isinstance(events_json, str):
+        try:
+            events = json.loads(events_json)
+        except Exception:
+            events = [events_json]
+    elif isinstance(events_json, dict):
+        events = [events_json]
+    else:
+        events = events_json or []
+
+    should = []
+    for event in events:
+        if isinstance(event, dict):
+            txt = event.get("event") or event.get("message") or event.get("description") or ""
+        else:
+            txt = str(event)
+        if txt:
+            should.append({"match": {"message": {"query": txt}}})
+
+    return {"query": {"bool": {"should": should}}} if should else {"query": {"match_none": {}}}
+
+def _g(d, path, default=None):
+    cur = d
+    for k in path.split('.'):
+        if not isinstance(cur, dict):
+            return default
+        cur = cur.get(k)
+    return cur if cur is not None else default
+
 # ===== LLM (não-stream, compat) =====
 def ask_llm(prompt: str, model: str) -> str:
     try:
+        print("[ask_llm] Enviando prompt para LLM...")
+        prompt = prompt.lstrip("\u0001")
         resp = requests.post(
             LLM_URL,
             json={"model": model, "prompt": prompt, "stream": False},
             timeout=None,
         )
         data = resp.json()
+        preview = json.dumps(data, ensure_ascii=False)
+        print(f"[ask_llm] Resposta recebida do LLM: {data['response']}")
         if "response" in data:
             return delete_think(data["response"])
         if "message" in data and "content" in data["message"]:
@@ -173,9 +208,32 @@ Pergunta original:
 
 Resposta (apenas JSON ou null):
 """
-    text = ask_llm(prompt, "deepseek-coder-v2").strip()
-    text = strip_json_markdown(text)
-    return text if text else question
+    try:
+        text = ask_llm(prompt, "deepseek-coder-v2").strip()
+        text = strip_json_markdown(text)
+
+        if text.lower() == "null":
+            return "null"
+
+        try:
+            parsed = json.loads(text)
+        except Exception:
+            print(f"[WARN] [Reformulação] Resposta não era JSON: {text[:200]}...")
+            return "null"
+
+        if isinstance(parsed, list):
+            return json.dumps(build_es_query_from_events(parsed))
+
+        if isinstance(parsed, dict):
+            return json.dumps(parsed)  # respeitar query já válida
+
+        print(f"[WARN] [Reformulação] Tipo inesperado: {type(parsed)}")
+        return "null"
+
+    except Exception as e:
+        print(f"[ERROR] [Reformulação] {e}")
+        return "null"
+
 
 # ===== Elasticsearch =====
 
@@ -188,8 +246,10 @@ def es_search(query_text: str, time_from: str | None = None, time_to: str | None
         # tentar interpretar como JSON
         body = json.loads(query_text)
         print("[INFO] Query ES recebida em formato JSON válido.")
+        print(body)
     except json.JSONDecodeError:
         print("[INFO] Query ES não é JSON. A usar BM25.")
+        print(f"[INFO] Query ES original: {query_text}")
         must = [{"match": {"message": {"query": query_text}}}]
         filter_terms = []
         if time_from or time_to:
@@ -214,31 +274,40 @@ def es_search(query_text: str, time_from: str | None = None, time_to: str | None
     try:
         res = es.search(index="winlog-*", body=body)
         hits = res.get("hits", {}).get("hits", [])
-        return [h["_source"] for h in hits]
+        print(f"[INFO] [Elasticsearch] Encontrados {len(hits)} resultados.")
+        return [{**h["_source"], "_id": h["_id"]} for h in hits]
     except Exception as e:
         print(f"[WARN] [Elasticsearch] {e}")
         return []
 
 # ===== Chroma =====
-def chroma_search(query_text: str, n_results: int = 5):
-    try:
-        if not chroma.heartbeat():
-            print("[WARN] [Chroma] ChromaDB não está disponível.")
-            return []
-        collection = chroma.get_or_create_collection("policies")
-        q_emb = embed_fn(query_text)
-        res = collection.query(
-            query_embeddings=q_emb,
-            n_results=n_results,
-            where=None,
-            include=["documents", "metadatas"]
-        )
-        docs = (res.get("documents") or [[]])[0]
-        metas = (res.get("metadatas") or [[]])[0]
-        return list(zip(docs, metas))
-    except Exception as e:
-        print(f"[WARN] [Chroma] {e}")
-        return []
+def chroma_search(query, top_k=5):
+    print(f"[INFO] [Chroma] Iniciando pesquisa para: {query}")
+    query_embedding = embed_fn([query])[0]
+    results = chroma.get_or_create_collection("policies").query(
+        query_embeddings=[query_embedding], n_results=top_k
+    )
+    documents = results.get("documents") or []
+    metadatas = results.get("metadatas") or results.get("metas") or []
+    distances = results.get("distances") or []
+
+    pairs = []
+    def pick(lst, i):
+        try:
+            v = lst[i]
+            return v[0] if isinstance(v, list) else v
+        except Exception:
+            return None
+
+    for i in range(max(len(documents), len(metadatas), len(distances))):
+        pairs.append({
+            "text": pick(documents, i) or "",
+            "meta": pick(metadatas, i) or {},
+            "score": pick(distances, i) or 0.0
+        })
+    return pairs
+
+
 
 # ===== Prompt =====
 def build_final_prompt(context_blocks: list[str], question: str) -> str:
@@ -265,11 +334,12 @@ def query_hybrid_rag(question: str, time_from: str | None = None, time_to: str |
 
     es_docs = es_search(refined, time_from=time_from, time_to=time_to, size=20)
     es_blocks = [
-        f"@timestamp={d.get('@timestamp')} event.code={d.get('event.code')} winlog.event_id={d.get('winlog.event_id')} user.name={d.get('user.name')}\n{d.get('message','')}"
+        f"@timestamp={d.get('@timestamp')} event.code={_g(d,'event.code')} "
+        f"winlog.event_id={_g(d,'winlog.event_id')} user.name={_g(d,'user.name')}\n{d.get('message','')}"
         for d in es_docs
     ]
-    chroma_pairs = chroma_search(refined, n_results=5)
-    chroma_blocks = [f"[POLICY]\n{doc}" for (doc, _meta) in chroma_pairs]
+    chroma_pairs = chroma_search(question, top_k=5)  # usar pergunta natural
+    chroma_blocks = [f"[POLICY]\n{p['text']}" for p in chroma_pairs if p.get("text")]
 
     blocks = es_blocks + chroma_blocks
     if not blocks:
@@ -277,7 +347,7 @@ def query_hybrid_rag(question: str, time_from: str | None = None, time_to: str |
     final_prompt = build_final_prompt(blocks[:12], question)
     return ask_llm(final_prompt, LLM_MODEL)
 
-# ===== RAG (stream) =====
+# ----- RAG (stream)
 def query_hybrid_rag_stream(question: str, time_from: str | None = None, time_to: str | None = None):
     refined = reformulate_for_es(question)
     print(f"[INFO] Query reformulada (stream): {refined!r}")
@@ -288,11 +358,12 @@ def query_hybrid_rag_stream(question: str, time_from: str | None = None, time_to
 
     es_docs = es_search(refined, time_from=time_from, time_to=time_to, size=20)
     es_blocks = [
-        f"@timestamp={d.get('@timestamp')} event.code={d.get('event.code')} winlog.event_id={d.get('winlog.event_id')} user.name={d.get('user.name')}\n{d.get('message','')}"
+        f"@timestamp={d.get('@timestamp')} event.code={_g(d,'event.code')} "
+        f"winlog.event_id={_g(d,'winlog.event_id')} user.name={_g(d,'user.name')}\n{d.get('message','')}"
         for d in es_docs
     ]
-    chroma_pairs = chroma_search(refined, n_results=5)
-    chroma_blocks = [f"[POLICY]\n{doc}" for (doc, _meta) in chroma_pairs]
+    chroma_pairs = chroma_search(question, top_k=5)
+    chroma_blocks = [f"[POLICY]\n{p['text']}" for p in chroma_pairs if p.get("text")]
 
     blocks = es_blocks + chroma_blocks
     if not blocks:
@@ -300,7 +371,5 @@ def query_hybrid_rag_stream(question: str, time_from: str | None = None, time_to
         return
 
     final_prompt = build_final_prompt(blocks[:12], question)
-
-    # aplica o filtro no streaming
     for piece in delete_think_stream(ask_llm_stream(final_prompt)):
         yield piece

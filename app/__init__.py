@@ -60,9 +60,9 @@ def create_app(config_class: type = Config) -> Flask:
     # Cria tabelas se não existirem
     with app.app_context():
         db.create_all()
-        create_test_anomalies()
+        #create_test_anomalies()
 
-    create_fake_winlogs()
+    #create_fake_winlogs()
     # Scheduler para deteção automática
     scheduler = BackgroundScheduler()
 
@@ -71,7 +71,7 @@ def create_app(config_class: type = Config) -> Flask:
         with app.app_context():
             detect_and_create_anomalies()
 
-    scheduler.add_job(job_wrapper, 'interval', minutes=60, id='detect_anomalies', replace_existing=True, max_instances=1, next_run_time=datetime.now() + timedelta(seconds=10))
-    #scheduler.start() # Descomente para ativar o scheduler
+    scheduler.add_job(job_wrapper, 'interval', minutes=5, id='detect_anomalies', replace_existing=False, max_instances=1, next_run_time=datetime.now() + timedelta(seconds=10))
+    scheduler.start() # Descomente para ativar o scheduler
 
     return app
