@@ -11,7 +11,6 @@
             <select id="stateFilter" class="form-select w-auto d-inline">
                 <option value="">Todos</option>
                 <option value="open">Aberto</option>
-                <option value="in_progress">Em andamento</option>
                 <option value="closed">Concluído</option>
             </select>
         </div>
@@ -43,7 +42,6 @@
                     <td>{{ i.updated_at.strftime('%Y-%m-%d %H:%M:%S') }}</td>
                     <td>
                         {% if i.state == 'open' %}<span class="badge bg-warning">Aberto</span>{% endif %}
-                        {% if i.state == 'in_progress' %}<span class="badge bg-info">Em andamento</span>{% endif %}
                         {% if i.state == 'closed' %}<span class="badge bg-success">Concluído</span>{% endif %}
                     </td>
                     <td>

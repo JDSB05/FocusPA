@@ -21,6 +21,6 @@ __all__ = [
     'receber_log', 'procurar_logs',
     'list_policies', 'policy_new', 'policy_edit', 'policy_delete', 'upload_policy',
     'list_anomalies', 'get_anomaly', 'create_anomaly', 'update_anomaly', 'delete_anomaly',
-    'list_investigations', 'start_investigation', 'investigation_detail',
+    'list_investigations', 'start_investigation', 'investigation_detail', 'complete_investigation', 'remove_anomaly', 'upload_file', 'delete_file', 'add_note', 'delete_note', 'investigation_dropdown', 'add_anomaly'
     'list_logs'
 ]

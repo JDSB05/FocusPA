@@ -76,7 +76,7 @@ class Investigation(db.Model):
     description = db.Column(db.Text, nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.now)
     updated_at = db.Column(db.DateTime, default=datetime.now, onupdate=datetime.now)
-    state = db.Column(db.String(20), default="open")  # open, in_progress, closed
+    state = db.Column(db.String(20), default="open")  # open, closed
     responsible_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True)
 
     responsible = db.relationship("User", backref=db.backref("investigations", lazy="dynamic"))
@@ -96,6 +96,26 @@ investigation_anomalies = db.Table(
     db.Column("investigation_id", db.Integer, db.ForeignKey("investigations.id"), primary_key=True),
     db.Column("anomaly_id", db.Integer, db.ForeignKey("anomalies.id"), primary_key=True)
 )
+
+class Note(db.Model):
+    __tablename__ = "notes"
+    id = db.Column(db.Integer, primary_key=True)
+    content = db.Column(db.Text, nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.now)
+    investigation_id = db.Column(db.Integer, db.ForeignKey("investigations.id"), nullable=False)
+
+    investigation = db.relationship("Investigation", backref=db.backref("notes", lazy="dynamic"))
+
+class File(db.Model):
+    __tablename__ = "files"
+    id = db.Column(db.Integer, primary_key=True)
+    filename = db.Column(db.String(255), nullable=False)
+    data = db.Column(db.LargeBinary, nullable=False)  # armazena conteúdo binário
+    mimetype = db.Column(db.String(50), nullable=True)
+    uploaded_at = db.Column(db.DateTime, default=datetime.now)
+    investigation_id = db.Column(db.Integer, db.ForeignKey("investigations.id"), nullable=False)
+
+    investigation = db.relationship("Investigation", backref=db.backref("files", lazy="dynamic"))
 
 class AccessLog(db.Model):
     __tablename__ = "access_logs"
