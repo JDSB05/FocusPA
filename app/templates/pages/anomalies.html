@@ -55,6 +55,24 @@
           })">
               Marcar como resolvido
             </button>
+
+            <button class="table-button" onclick="showModal({
+                          title: 'Iniciar Investigação',
+                          body: '<p>Queres iniciar uma investigação com base nesta anomalia?</p>',
+                          actions: [
+                            { label: 'Iniciar', onClick: () => {
+                                fetch(`/investigations/start/{{ a.id }}`, { method: 'POST' })
+                                  .then(() => location.reload());
+                              }},
+                            { label: 'Cancelar', onClick: () => {} },
+                          ]
+                        })">
+              Iniciar investigação
+            </button>
+
+            <button class="table-button" onclick="showAddToInvestigationModal({{ a.id }})">
+              Adicionar a investigação
+            </button>
           </td>
         </tr>
         {% else %}
@@ -108,6 +126,40 @@ function applyFilters() {
 document.getElementById('severityFilter').addEventListener('change', applyFilters);
 document.getElementById('stateFilter').addEventListener('change', applyFilters);
 document.getElementById('dateFilter').addEventListener('change', applyFilters);
+
+function showAddToInvestigationModal(anomalyId) {
+  // Fetch das investigações existentes
+  fetch('/investigations/dropdown')
+    .then(response => response.json())
+    .then(investigations => {
+      const options = investigations.map(i => `<option value="${i.id}">${i.title}</option>`).join('');
+      showModal({
+        title: 'Adicionar a Investigação',
+        body: `
+          <p>Escolhe a investigação à qual queres adicionar esta anomalia:</p>
+          <select id="investigationSelect" class="form-select w-100">
+            ${options}
+          </select>
+        `,
+        actions: [
+          { 
+            label: 'Adicionar', 
+            onClick: () => {
+              const selectedInvestigationId = document.getElementById('investigationSelect').value;
+              fetch(`/investigations/${selectedInvestigationId}/add_anomaly/${anomalyId}`, {
+                method: 'POST',
+              })
+              .then(res => {
+                if (!res.ok) throw new Error('Falhou a associação');
+                location.reload();
+              })
+            } 
+          },
+          { label: 'Cancelar', onClick: () => {} }
+        ]
+      });
+    });
+}
 </script>
 <style>
 .table-button {

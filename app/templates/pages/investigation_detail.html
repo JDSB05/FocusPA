@@ -1,0 +1,105 @@
+{% extends "layout.html" %}
+{% block title %}Investigação #{{ investigation.id }}{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <h1>{{ investigation.title }}</h1>
+
+    <div class="card mb-3">
+        <div class="card-body">
+            <p class="card-text"><strong>Descrição:</strong> {{ investigation.description or "Sem descrição" }}</p>
+            <p class="card-text"><strong>Estado:</strong> 
+                {% if investigation.state == 'open' %}Aberto{% endif %}
+                {% if investigation.state == 'closed' %}Concluído{% endif %}
+            </p>
+            
+            <p class="card-text"><strong>Criada em:</strong> {{ investigation.created_at.strftime("%d/%m/%Y %H:%M") }}</p>
+            <p class="card-text"><strong>Atualizada em:</strong> {{ investigation.updated_at.strftime("%d/%m/%Y %H:%M") }}</p>
+            <p class="card-text"><strong>Responsável:</strong> {{ investigation.responsible.username if investigation.responsible else "—" }}</p>
+        </div>
+    </div>
+
+    <h3>Anomalias associadas</h3>
+    {% if investigation.anomalies %}
+        <ul class="list-group mb-3">
+        {% for anomaly in investigation.anomalies %}
+            <li class="list-group-item d-flex justify-content-between align-items-center">
+                <span><strong>{{ anomaly.id }}:</strong> {{ anomaly.description }}</span>
+                <form action="{{ url_for('investigation.remove_anomaly', inv_id=investigation.id, anomaly_id=anomaly.id) }}" method="POST" class="mb-0">
+                    <input type="hidden" name="_method" value="DELETE">
+                    <button type="submit" class="btn btn-danger">Remover</button>
+                </form>
+            </li>
+        {% endfor %}
+        </ul>
+    {% else %}
+        <p>Sem anomalias associadas.</p>
+    {% endif %}
+
+    <h3>Notas</h3>
+
+    {% if investigation.notes.count() > 0 %}
+        <ul class="list-group mb-3">
+        {% for note in investigation.notes %}
+            <li class="list-group-item d-flex justify-content-between align-items-center">
+                <span>{{ note.content }}</span>
+                <small class="text-muted">{{ note.created_at.strftime("%d/%m/%Y %H:%M") }}</small>
+                <form action="{{ url_for('investigation.delete_note', inv_id=investigation.id, note_id=note.id) }}" method="POST" class="mb-0">
+                    <input type="hidden" name="_method" value="DELETE">
+                    <button type="submit" class="btn btn-danger">Remover</button>
+                </form>
+            </li>
+        {% endfor %}
+        </ul>
+    {% else %}
+        <p>Sem notas associadas.</p>
+    {% endif %}
+
+    <h5>Adicionar nota</h5>
+    <form action="{{ url_for('investigation.add_note', inv_id=investigation.id) }}" method="POST" class="mb-3">
+        <div class="mb-2">
+            <textarea name="content" class="form-control" rows="3" placeholder="Escreve a nota..." required></textarea>
+        </div>
+        <button type="submit" class="btn btn-primary btn-sm">Adicionar</button>
+    </form>
+
+    <h3>Carregar novo ficheiro</h3>
+    <form action="{{ url_for('investigation.upload_file', inv_id=investigation.id) }}" method="POST" enctype="multipart/form-data" class="mb-3">
+        <div class="mb-2">
+            <input type="file" name="file" required>
+        </div>
+        <button type="submit" class="btn btn-primary btn-sm">Carregar</button>
+    </form>
+
+    <h3>Ficheiros associados</h3>
+    {% if investigation.files.count() > 0 %}
+        <ul class="list-group mb-3">
+        {% for file in investigation.files %}
+            <li class="list-group-item d-flex justify-content-between align-items-center">
+                <a href="{{ url_for('investigation.download_file', inv_id=investigation.id, file_id=file.id) }}">
+                    {{ file.filename }}
+                </a>
+                <form action="{{ url_for('investigation.delete_file', inv_id=investigation.id, file_id=file.id) }}" method="POST" class="mb-0">
+                    <input type="hidden" name="_method" value="DELETE">
+                    <button type="submit" class="btn btn-danger">Apagar</button>
+                </form>
+            </li>
+        {% endfor %}
+        </ul>
+    {% else %}
+        <p>Sem ficheiros associados.</p>
+    {% endif %}
+
+    <button type="button" class="table-button" onclick="window.location.href='{{ url_for('investigation.list')}}'">
+        Voltar
+    </button>
+</div>
+
+<style>
+    .table-button {
+        background-color: var(--color-secondary);
+        cursor: pointer;
+        text-decoration: none;
+    }
+</style>
+{% endblock %}
