@@ -574,6 +574,7 @@ think {
     padding: 0.75rem 1rem;
     vertical-align: middle;
     color: #212529;
+    height: 100%;
 }
 
 .table-access-log td:nth-child(1) {
@@ -618,6 +619,37 @@ think {
   opacity: 0.5;
 }
 
+.table-button {
+display: inline-block;
+margin-right: 10px;
+background-color: var(--color-main);
+text-align: center;
+}
+
+.table-button:hover {
+background-color: var(--color-button-hover);
+color: white;
+}
+
+.table-access-log td.descricao {
+  max-width: 40%;           /* controla largura */
+  white-space: pre-wrap;    /* mantém quebras de linha e quebra se precisar */
+  word-wrap: break-word;    /* força quebra se palavra longa */
+  font-family: monospace;   /* opcional: estilo igual ao dos logs */
+}
+
+.table-access-log td.acoes {
+  display: flex;
+  flex-direction: column;   /* empilha em coluna */
+  justify-content: center; /* centraliza verticalmente */
+  align-items: center; /* centraliza horizontalmente */
+  gap: 6px;               /* espaço entre botões */
+  height: 100%;
+}
+
+.table-access-log td.acoes .table-button {
+  width: 100%;              /* opcional: ocupar largura da célula */
+}
 /* Table styles end */
 /* Dashboard styles */
 
