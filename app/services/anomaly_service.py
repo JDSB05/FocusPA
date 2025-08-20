@@ -149,7 +149,7 @@ Eventos:
 Considera o seguinte contexto para a avaliação (apenas para te orientar, não é uma política de acesso vinculativa):
 - Os utilizadores listados como *admins* têm acesso generalista a qualquer diretório; acessos feitos por eles só são anómalos se houver outros sinais fortes.
 - Para cada entrada em "diretórios sensíveis", se um utilizador **não** estiver em allowed_users e aceder ao path (prefix-match), tende a ser **mais suspeito**.
-- Normaliza usernames (case-insensitive). Se allowed_users contiver "*", trata como permitido.
+- Poderás ter ainda umas notas extra fornecidas pelo utilizador. Leva-as também em conta.
 - Se não houver match com nenhum diretório sensível, decide pela heurística geral dos eventos/códigos.
 {build_policy_context_for_prompt()}
 """
