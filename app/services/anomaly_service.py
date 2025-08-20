@@ -6,6 +6,7 @@ from datetime import datetime, timedelta
 from ..extensions import db
 from ..model import Anomaly
 from app.controllers.rag_controller import es_search, strip_json_markdown, ask_llm, _g
+from app.utils.policy import build_policy_context_for_prompt
 
 logger = logging.getLogger(__name__)
 
@@ -31,7 +32,10 @@ Regras:
   ]
 - Só devolver eventos que representem risco real (ignorar benign/normal).
 - Se não houver dados suficientes para classificar, devolver apenas: null
+- Não inventar IDs, não criar eventos. Usa apenas os IDs fornecidos.
+- Usa o contexto fornecido (admins e diretórios) apenas para priorizar/filtrar risco — não faças enforcement.
 """
+    print(prompt)
     try:
         print("[Classificação] A enviar prompt ao LLM...")
         text = ask_llm(prompt, "deepseek-coder-v2").strip()
@@ -119,7 +123,8 @@ def detect_and_create_anomalies():
         print("[AnomalyService] Nenhum evento válido para classificação.")
         return
 
-    prompt = f"""
+    # 1) Pergunta
+    policy_question = f"""
 Classifica os seguintes eventos de log do Windows.
 Devolve apenas as **falhas de segurança confirmadas** (ignora benign/normal).
 Formato: array JSON de objetos:
@@ -139,8 +144,18 @@ Regras fortes:
 Eventos:
 {json.dumps(event_payload, ensure_ascii=False)}
 """
+    # 2) Contexto adicional: admins, diretórios sensíveis e custom prompt
+    policy_context = f"""
+Considera o seguinte contexto para a avaliação (apenas para te orientar, não é uma política de acesso vinculativa):
+- Os utilizadores listados como *admins* têm acesso generalista a qualquer diretório; acessos feitos por eles só são anómalos se houver outros sinais fortes.
+- Para cada entrada em "diretórios sensíveis", se um utilizador **não** estiver em allowed_users e aceder ao path (prefix-match), tende a ser **mais suspeito**.
+- Normaliza usernames (case-insensitive). Se allowed_users contiver "*", trata como permitido.
+- Se não houver match com nenhum diretório sensível, decide pela heurística geral dos eventos/códigos.
+{build_policy_context_for_prompt()}
+"""
+    
     print("[AnomalyService] A enviar prompt ao LLM para classificação...")
-    raw = classify_events_with_rag(prompt, "")
+    raw = classify_events_with_rag(policy_question, policy_context)
     if raw == "null":
         print("[AnomalyService] Nenhuma anomalia detectada pelo LLM.")
         return
