@@ -275,7 +275,10 @@ def es_search(query_text: str, time_from: str | None = None, time_to: str | None
         res = es.search(index="winlog-*", body=body)
         hits = res.get("hits", {}).get("hits", [])
         print(f"[INFO] [Elasticsearch] Encontrados {len(hits)} resultados.")
-        return [{**h["_source"], "_id": h["_id"]} for h in hits]
+        return [
+            {**h["_source"], "_id": h["_id"], "_index": h["_index"]}
+            for h in hits
+        ]
     except Exception as e:
         print(f"[WARN] [Elasticsearch] {e}")
         return []

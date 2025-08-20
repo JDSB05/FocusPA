@@ -5,6 +5,7 @@ from .anomaly import anomaly_bp
 from .investigation import investigation_bp
 from .accesslog import accesslog_bp
 from .rag import rag_bp
+from .log import log_bp
 
 __all__ = [
     'auth_bp',
@@ -14,4 +15,5 @@ __all__ = [
     'investigation_bp',
     'accesslog_bp',
     'rag_bp',
+    'log_bp',
 ]

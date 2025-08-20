@@ -16,6 +16,7 @@ from .routes import (
     investigation_bp,
     accesslog_bp,
     rag_bp,
+    log_bp,
 )
 from .model import Anomaly, User, create_test_anomalies, create_investigation
 
@@ -58,6 +59,7 @@ def create_app(config_class: type = Config) -> Flask:
     app.register_blueprint(investigation_bp)
     app.register_blueprint(accesslog_bp)
     app.register_blueprint(rag_bp)
+    app.register_blueprint(log_bp)
 
     # Cria tabelas se não existirem
     with app.app_context():
@@ -77,17 +79,16 @@ def create_app(config_class: type = Config) -> Flask:
 
         # Criar investigação associada às primeiras 3 anomalias
         anomaly_ids = [a.id for a in Anomaly.query.limit(3).all()]
-        investigation = create_investigation(
-            title="Investigação suspeita no Elasticsearch",
-            description="Análise aprofundada de padrões anómalos vindos do cluster ES.",
-            anomaly_ids=anomaly_ids,
-            responsible_id=1  # opcional, ID do user responsável
-        )
+        #investigation = create_investigation(
+        #    description="Análise aprofundada de padrões anómalos vindos do cluster ES.",
+        #    anomaly_ids=anomaly_ids,
+        #    responsible_id=1  # opcional, ID do user responsável
+        #)
 
-        print(investigation)
-        print(investigation.anomalies)  # lista de anomalias ligadas
+        #print(investigation)
+        #print(investigation.anomalies)  # lista de anomalias ligadas
 
-    create_fake_winlogs()
+    #create_fake_winlogs()
     # Scheduler para deteção automática
     scheduler = BackgroundScheduler()
 
@@ -97,6 +98,6 @@ def create_app(config_class: type = Config) -> Flask:
             detect_and_create_anomalies()
 
     scheduler.add_job(job_wrapper, 'interval', minutes=5, id='detect_anomalies', replace_existing=False, max_instances=1, next_run_time=datetime.now() + timedelta(seconds=10))
-    scheduler.start() # Descomente para ativar o scheduler
+    #scheduler.start() # Descomente para ativar o scheduler
 
     return app

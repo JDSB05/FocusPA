@@ -86,7 +86,6 @@ def fetch_recent_events(max_events: int = 100, minutes: int = 15):
             "path": _g(source, "log.file.path"),
             "source": "winlogbeat"
         })
-        print(f"[AnomalyService] Evento adicionado: {events[-1]}")
     return events
 
 

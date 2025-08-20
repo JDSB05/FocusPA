@@ -37,10 +37,10 @@
        <tr data-severity="{{ a.severity }}" data-state="{{ 'resolved' if a.resolved else 'unresolved' }}" data-date="{{ a.timestamp.strftime('%Y-%m-%d') }}">
           <td>{{ a.timestamp.strftime('%Y‑%m‑%d %H:%M:%S') }}</td>
           <td>{{ a.source }}</td>
-          <td>{{ a.description }}</td>
+          <td class="descricao">{{ a.description }}</td>
           <td>{{ a.severity }}</td>
           <td>{{ 'Sim' if a.resolved else 'Não' }}</td>
-          <td>
+          <td class="acoes">
             <button class="table-button" onclick="showModal({
             title: 'Confirmar resolução',
             body: '<p>Tens a certeza que queres marcar esta anomalia como resolvida?</p>',
@@ -161,16 +161,4 @@ function showAddToInvestigationModal(anomalyId) {
     });
 }
 </script>
-<style>
-.table-button {
-  background-color: var(--color-secondary);
-  cursor: pointer;
-  text-decoration: none;
-}
-
-.table-button:hover {
-  background-color: var(--color-button-hover);
-  color: white;
-}
-</style>
 {% endblock %}
