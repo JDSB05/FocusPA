@@ -1,9 +1,21 @@
 {
-  "admins": ["alice", "bob", "svc_admin"],
+  "admins": [
+    "fortfewfwefwe"
+  ],
   "dirs": [
-    { "path": "C:\\Finance\\Payroll", "allowed_users": ["alice", "payroll_bot"] },
-    { "path": "\\\\fileserver\\HR\\Confidential", "allowed_users": ["carla", "hr-admins"] },
-    { "path": "C:\\Windows\\System32", "allowed_users": ["*"] }
+    {
+      "path": "C:\\Finance\\Payroll",
+      "allowed_users": [
+        "alice",
+        "payroll_bot"
+      ]
+    },
+    {
+      "path": "sadasdasdsad",
+      "allowed_users": [
+        "12321313"
+      ]
+    }
   ],
   "custom_prompt": "Diretórios são *prefix-match*; comparação de usernames é case-insensitive."
 }

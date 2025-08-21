@@ -1,0 +1,213 @@
+{% extends "layout.html" %}
+{% block title %}Políticas de Segurança{% endblock %}
+
+{% block content %}
+<style>
+  .section{margin:20px 0;padding:16px;border:1px solid #e5e7eb;border-radius:14px;background:#fff}
+  .row{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:8px}
+  .chip{display:inline-flex;align-items:center;gap:6px;border:1px solid #cbd5e1;border-radius:999px;padding:6px 10px;margin:4px 6px 0 0}
+  .chip button{border:none;background:transparent;cursor:pointer;font-weight:bold}
+  .btn{cursor:pointer;border:none;border-radius:10px;padding:10px 14px}
+  .btn-primary{background:#2563eb;color:#fff}
+  .btn-secondary{background:#f3f4f6}
+  .btn-danger{background:#ef4444;color:#fff}
+  .input, textarea{border:1px solid #cbd5e1;border-radius:10px;padding:10px;width:100%}
+  .input.sm{max-width:280px}
+  .dir-card{border:1px dashed #cbd5e1;border-radius:12px;padding:12px;margin-top:12px}
+  .help{color:#6b7280;font-size:0.9em}
+  pre.preview{background:#0b1020;color:#d1e7ff;padding:12px;border-radius:10px;overflow:auto;max-height:380px}
+  body { color: #000; }
+</style>
+
+<h1>Políticas de Segurança</h1>
+<p class="help">Usernames são <b>case-insensitive</b>. Em <i>allowed_users</i>, <code>*</code> é wildcard.</p>
+
+<div class="section">
+  <h2>Admins</h2>
+  <div id="admins-chips" class="row"></div>
+  <div class="row">
+    <input id="admin-input" class="input sm" placeholder="novo admin (ex.: alice)" />
+    <button class="btn btn-secondary" onclick="addAdmin()">Adicionar</button>
+  </div>
+</div>
+
+<div class="section">
+  <h2>Diretórios sensíveis</h2>
+  <div id="dirs-container"></div>
+  <button class="btn btn-secondary" style="margin-top:10px" onclick="addDir()">+ Adicionar diretório</button>
+</div>
+
+<div class="section">
+  <h2>Custom Prompt</h2>
+  <textarea id="custom-prompt" rows="4" class="input" placeholder="Notas/heurísticas adicionais a passar ao LLM"></textarea>
+</div>
+
+<div class="section">
+  <h2>Preview JSON</h2>
+  <pre class="preview" id="json-preview">{}</pre>
+  <div class="row" style="margin-top:10px">
+    <button class="btn btn-primary" onclick="saveAll()">Guardar</button>
+    <button class="btn btn-secondary" onclick="reloadAll()">Repor</button>
+  </div>
+  <p id="msg" class="help"></p>
+</div>
+
+<script>
+  const state = { admins: [], dirs: [], custom_prompt: "" };
+
+  function el(tag, opts={}, children=[]) {
+    const e = document.createElement(tag);
+    Object.entries(opts).forEach(([k,v])=>{
+      if (k === "class") e.className = v;
+      else if (k === "html") e.innerHTML = v;
+      else if (k.startsWith("on")) e.addEventListener(k.substring(2), v);
+      else e.setAttribute(k, v);
+    });
+    (Array.isArray(children)?children:[children]).filter(Boolean).forEach(c=>{
+      if (typeof c === "string") e.appendChild(document.createTextNode(c));
+      else e.appendChild(c);
+    });
+    return e;
+  }
+
+  function renderAdmins() {
+    const box = document.getElementById("admins-chips");
+    box.innerHTML = "";
+    state.admins.forEach((a,idx)=>{
+      box.appendChild(el("span",{class:"chip"},[
+        a,
+        el("button",{onclick:()=>{state.admins.splice(idx,1);renderAll();}}, "×")
+      ]));
+    });
+  }
+
+  function renderDirs() {
+    const cont = document.getElementById("dirs-container");
+    cont.innerHTML = "";
+    state.dirs.forEach((d,idx)=>{
+      const card = el("div",{class:"dir-card"});
+      const pathInput = el("input",{
+        class:"input", value:d.path || "", placeholder:"Path (ex.: C:\\\\Finance\\\\Payroll)",
+        oninput:(ev)=>{state.dirs[idx].path = ev.target.value; updatePreview();}
+      });
+
+      const chips = el("div",{class:"row", style:"margin-top:6px"});
+      (d.allowed_users||[]).forEach((u,ui)=>{
+        chips.appendChild(el("span",{class:"chip"},[
+          u,
+          el("button",{onclick:()=>{state.dirs[idx].allowed_users.splice(ui,1);renderAll();}},"×")
+        ]));
+      });
+
+      const addWrap = el("div",{class:"row", style:"margin-top:8px"});
+      const userInput = el("input",{class:"input sm", placeholder:'allowed user (ex.: alice ou "*")'});
+      const addBtn = el("button",{class:"btn btn-secondary", onclick:()=>{
+        const val = (userInput.value||"").trim();
+        if (!val) return;
+        state.dirs[idx].allowed_users = state.dirs[idx].allowed_users || [];
+        if (!state.dirs[idx].allowed_users.includes(val)) {
+          state.dirs[idx].allowed_users.push(val);
+        }
+        userInput.value = "";
+        renderAll();
+      }},"Adicionar");
+
+      addWrap.appendChild(userInput);
+      addWrap.appendChild(addBtn);
+
+      const topRow = el("div",{class:"row"},[
+        el("div",{style:"flex:1"},[
+          el("label",{class:"help"},"Path"),
+          pathInput
+        ]),
+        el("div",{style:"min-width:120px"},[
+          el("button",{class:"btn btn-danger", onclick:()=>{state.dirs.splice(idx,1);renderAll();}},"Remover")
+        ])
+      ]);
+
+      card.appendChild(topRow);
+      card.appendChild(el("label",{class:"help"},"Allowed users"));
+      card.appendChild(chips);
+      card.appendChild(addWrap);
+
+      cont.appendChild(card);
+    });
+  }
+
+  function renderCustomPrompt() {
+    const ta = document.getElementById("custom-prompt");
+    ta.value = state.custom_prompt || "";
+  }
+
+  function updatePreview() {
+    const preview = {
+      admins: [...state.admins],
+      dirs: (state.dirs||[]).map(d=>({ path:(d.path||"").trim(), allowed_users:[...(d.allowed_users||[])] })),
+      custom_prompt: state.custom_prompt || ""
+    };
+    document.getElementById("json-preview").textContent = JSON.stringify(preview, null, 2);
+  }
+
+  function renderAll() {
+    renderAdmins();
+    renderDirs();
+    renderCustomPrompt();
+    updatePreview();
+  }
+
+  async function reloadAll() {
+    setMsg("");
+    try{
+      const resp = await fetch('/security_policy/', { credentials: 'same-origin' });
+      const data = await resp.json();
+      state.admins = data.admins || [];
+      state.dirs = data.dirs || [];
+      state.custom_prompt = data.custom_prompt || "";
+      renderAll();
+    }catch(e){ setMsg('❌ Erro a carregar.'); }
+  }
+
+  async function saveAll() {
+    setMsg("");
+    const payload = {
+      admins: state.admins,
+      dirs: state.dirs.map(d=>({ path:(d.path||"").trim(), allowed_users:[...(d.allowed_users||[])] })),
+      custom_prompt: document.getElementById("custom-prompt").value || ""
+    };
+    try{
+      const resp = await fetch('/security_policy/', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
+        body: JSON.stringify(payload)
+      });
+      if(!resp.ok){ const b = await resp.json().catch(()=>({})); throw new Error(b.error||'Erro'); }
+      await reloadAll();
+      setMsg('✅ Guardado com sucesso.');
+    }catch(e){ setMsg('❌ ' + e.message); }
+  }
+
+  function addAdmin() {
+    const inp = document.getElementById("admin-input");
+    const v = (inp.value||"").trim();
+    if (!v) return;
+    if (!state.admins.includes(v)) state.admins.push(v);
+    inp.value = "";
+    renderAll();
+  }
+
+  function addDir() {
+    state.dirs.push({ path:"", allowed_users:[] });
+    renderAll();
+  }
+
+  function setMsg(t){ document.getElementById("msg").textContent = t || ""; }
+
+  // init
+  document.getElementById("custom-prompt").addEventListener("input", (e)=>{
+    state.custom_prompt = e.target.value;
+    updatePreview();
+  });
+  reloadAll();
+</script>
+{% endblock %}

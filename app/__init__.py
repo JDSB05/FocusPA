@@ -12,6 +12,7 @@ from .routes import (
     main_bp,
     auth_bp,
     policy_bp,
+    security_policy_bp,
     anomaly_bp,
     investigation_bp,
     accesslog_bp,
@@ -55,6 +56,7 @@ def create_app(config_class: type = Config) -> Flask:
     app.register_blueprint(auth_bp)
     app.register_blueprint(main_bp)
     app.register_blueprint(policy_bp)
+    app.register_blueprint(security_policy_bp)
     app.register_blueprint(anomaly_bp)
     app.register_blueprint(investigation_bp)
     app.register_blueprint(accesslog_bp)
