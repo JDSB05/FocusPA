@@ -66,7 +66,7 @@ def create_app(config_class: type = Config) -> Flask:
     # Cria tabelas se não existirem
     with app.app_context():
         db.create_all()
-        create_test_anomalies()
+        #create_test_anomalies()
 
         # Garante que existe um utilizador admin
         user = User.query.get(1)

@@ -2,15 +2,34 @@ from flask import render_template, request, jsonify, flash
 import flask
 
 from ..extensions import db
-from ..model import Anomaly
+from ..model import Anomaly, Investigation
 
 
 def list_anomalies():
     page = request.args.get('page', 1, type=int)
     per_page = 20  # nº de registos por página
 
-    pagination = Anomaly.query.order_by(Anomaly.timestamp.desc()) \
-                              .paginate(page=page, per_page=per_page, error_out=False)
+    # Filtro por campo booleano "investigacao" (true/false)
+    investigacao_param = request.args.get('investigacao')
+    investigacao_filter = None
+    if investigacao_param is not None:
+        val = investigacao_param.strip().lower()
+        if val in {'1', 'true', 't', 'yes', 'y', 'on'}:
+            investigacao_filter = True
+        elif val in {'0', 'false', 'f', 'no', 'n', 'off'}:
+            investigacao_filter = False
+
+    query = Anomaly.query
+    if investigacao_filter is not None:
+        # filter by whether there is an Investigation associated with the anomaly
+        exists_q = Anomaly.investigations.any()
+        if investigacao_filter:
+            query = query.filter(exists_q)
+        else:
+            query = query.filter(~exists_q)
+
+    pagination = query.order_by(Anomaly.timestamp.desc()) \
+                      .paginate(page=page, per_page=per_page, error_out=False)
 
     start_page = max(1, pagination.page - 2)
     end_page   = min(pagination.pages, pagination.page + 2)
@@ -20,7 +39,8 @@ def list_anomalies():
         anomalies=pagination.items,
         pagination=pagination,
         start_page=start_page,
-        end_page=end_page
+        end_page=end_page,
+        investigacao=investigacao_filter
     )
 
 def get_anomaly(anomaly_id: int):
@@ -33,6 +53,7 @@ def get_anomaly(anomaly_id: int):
         'severity': anomaly.severity,
         'resolved': anomaly.resolved,
         'resolved_at': anomaly.resolved_at.isoformat() if anomaly.resolved_at else None,
+        'investigacao': getattr(anomaly, 'investigacao', None),
     })
 
 

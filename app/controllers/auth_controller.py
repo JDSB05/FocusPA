@@ -1,6 +1,8 @@
 from flask import render_template, request, redirect, url_for, flash
 from flask_login import login_user, logout_user, current_user
 
+from app.utils.others import get_client_ip
+
 from ..extensions import db
 from ..model import User, AccessLog
 
@@ -12,7 +14,7 @@ def login():
         user = User.query.filter_by(username=username).first()
         if user and user.check_password(password):
             login_user(user)
-            log = AccessLog(user_id=user.id, action='login')  # type: ignore
+            log = AccessLog(user_id=user.id, action='login', ip_address=get_client_ip(), meta_info={"user_agent": request.user_agent.string})
             db.session.add(log)
             db.session.commit()
             return redirect(url_for('main.dashboard'))
@@ -40,7 +42,7 @@ def register():
 
 
 def logout():
-    log = AccessLog(user_id=current_user.id, action='logout')  # type: ignore
+    log = AccessLog(user_id=current_user.id, action='logout', ip_address=get_client_ip(), meta_info={"user_agent": request.user_agent.string})  
     db.session.add(log)
     db.session.commit()
     logout_user()
