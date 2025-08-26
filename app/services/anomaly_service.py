@@ -180,7 +180,7 @@ Considera o seguinte contexto para a avaliação (apenas para te orientar, não 
         anomaly = Anomaly(
             log_id=log_id, # type: ignore
             timestamp=evt.get("timestamp"), # type: ignore
-            source=evt.get("source", "elasticsearch"), # type: ignore
+            source=evt.get("source", "LLM"), # type: ignore
             description=match.get("description", ""), # type: ignore
             severity=match.get("severity", "medium"), # type: ignore
             resolved=False, # type: ignore

@@ -548,10 +548,12 @@ think {
 /* Access Log styles */
 .table-access-log {
     width: 100%;
+    max-width: 100%;
     border-collapse: collapse;
     box-shadow: 0 0 8px rgba(0, 0, 0, 0.15);
     background: #ffffff;
     overflow: hidden;
+    overflow-wrap: break-word;
 }
 
 .table-access-log thead th {
@@ -632,7 +634,7 @@ color: white;
 }
 
 .table-access-log td.descricao {
-  max-width: 40%;           /* controla largura */
+  max-width: 80ch;           /* controla largura */
   white-space: pre-wrap;    /* mantém quebras de linha e quebra se precisar */
   word-wrap: break-word;    /* força quebra se palavra longa */
   font-family: monospace;   /* opcional: estilo igual ao dos logs */

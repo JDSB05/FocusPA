@@ -1,13 +1,25 @@
 {% extends 'layout.html' %}
 {% block title %}Logs (Elastic){% endblock %}
 
-
 {% block content %}
   <h2>Logs (Winlogbeat / Elasticsearch)</h2>
-  <input type="text" id="search" class="search-input" placeholder="Procurar na tabela...">
+
+  <form method="get" action="{{ url_for('log.list_logs') }}" class="search-form">
+    <input type="text" name="provider" placeholder="Provider" value="{{ request.args.get('provider','') }}">
+    <input type="text" name="level" placeholder="Level" value="{{ request.args.get('level','') }}">
+    <input type="text" name="event_code" placeholder="Event ID" value="{{ request.args.get('event_code','') }}">
+    <input type="text" name="q" placeholder="Mensagem contém..." value="{{ request.args.get('q','') }}">
+
+    <label>De:</label>
+    <input type="datetime-local" name="from" value="{{ request.args.get('from','') }}">
+    <label>Até:</label>
+    <input type="datetime-local" name="to" value="{{ request.args.get('to','') }}">
+
+    <button type="submit"><i class="fa fa-search"></i></button>
+  </form>
 
   {% if logs|length == 0 %}
-    <p>Nenhum log disponível.</p>
+    <p>Nenhum log disponível. Preencha filtros e clique em "Pesquisar".</p>
   {% else %}
     <table id="logsTable" class="table-access-log">
       <thead>
@@ -23,11 +35,11 @@
       <tbody>
         {% for l in logs %}
           <tr>
-            <td class="mono">{{ l.timestamp or '-' }}</td>
-            <td>{{ l.provider or '-' }}</td>
-            <td>{{ l.level or '-' }}</td>
-            <td>{{ l.event_id or '-' }}</td>
-            <td class="mono">{{ l.message or '-' }}</td>
+            <td class="mono">{{ l.get('@timestamp','-') }}</td>
+            <td>{{ l.get('winlog', {}).get('provider_name','-') }}</td>
+            <td>{{ l.get('log', {}).get('level','-') }}</td>
+            <td>{{ l.get('event', {}).get('code','-') }}</td>
+            <td class="descricao mono">{{ l.get('message','-') }}</td>
             <td>
               <button
                 class="table-button"
@@ -42,62 +54,73 @@
       </tbody>
     </table>
 
-    {% if pagination.pages > 1 %}
-      <div class="pagination">
-        {% if pagination.has_prev %}
-          <a href="{{ url_for('log.list_logs', page=pagination.prev_num) }}">&laquo;</a>
-        {% endif %}
+   {% set args = request.args.to_dict() %}
+{% set _ = args.pop('page', None) %}
+{% set _ = args.pop('per_page', None) %}
 
-        {% for p in range(1, pagination.pages + 1) %}
-          {% if p == pagination.page %}
-            <span>{{ p }}</span>
-          {% else %}
-            <a href="{{ url_for('log.list_logs', page=p) }}">{{ p }}</a>
-          {% endif %}
-        {% endfor %}
+{% set total_pages = (total // per_page) + (1 if total % per_page > 0 else 0) %}
+{% if total_pages > 1 %}
+<div class="pagination">
 
-        {% if pagination.has_next %}
-          <a href="{{ url_for('log.list_logs', page=pagination.next_num) }}">&raquo;</a>
-        {% endif %}
-      </div>
+  {% if page > 1 %}
+    {% set query = args.copy() %}
+    {% set _ = query.update({'page': page-1, 'per_page': per_page}) %}
+    <a href="{{ url_for('log.list_logs') }}?{{ query|urlencode }}">&laquo;</a>
+  {% endif %}
+
+  {% for p in range(1, total_pages + 1) %}
+    {% if p == page %}
+      <span>{{ p }}</span>
+    {% else %}
+      {% set query = args.copy() %}
+      {% set _ = query.update({'page': p, 'per_page': per_page}) %}
+      <a href="{{ url_for('log.list_logs') }}?{{ query|urlencode }}">{{ p }}</a>
     {% endif %}
+  {% endfor %}
+
+  {% if page < total_pages %}
+    {% set query = args.copy() %}
+    {% set _ = query.update({'page': page+1, 'per_page': per_page}) %}
+    <a href="{{ url_for('log.list_logs') }}?{{ query|urlencode }}">&raquo;</a>
+  {% endif %}
+
+</div>
+{% endif %}
   {% endif %}
 
 <script>
-  // Filtro simples no cliente
-  document.getElementById('search').addEventListener('keyup', function () {
-    const filter = this.value.toLowerCase();
-    document.querySelectorAll('#logsTable tbody tr').forEach(function (row) {
-      const text = row.textContent.toLowerCase();
-      row.style.display = text.indexOf(filter) > -1 ? '' : 'none';
-    });
-  });
-
   function confirmCreateAnomaly(btn) {
     const indexName = btn.dataset.index;
-    console.log("Index Name:", btn.dataset);
-    console.log("Document ID:", btn.dataset.id);
-    if (!indexName) {
-      alert("Index não especificado.");
-      return;
-    }
     const docId = btn.dataset.id;
-    if (!docId) {
-      alert("ID do documento não especificado.");
+    if (!indexName || !docId) {
+      alert("Index ou ID do documento não especificado.");
       return;
     }
     showModal({
       title: 'Criar anomalia',
-      body: 'Queres criar uma anomalia a partir deste log do ES?',
+      body: `Queres criar uma anomalia a partir deste log do ES? Selecione a severidade:
+      <select id="severitySelect" required>
+        <option value="low">Baixa</option>
+        <option value="medium">Média</option>
+        <option value="high">Alta</option>
+      </select>`,
       actions: [
         {
           label: 'Criar',
           onClick: () => {
+            const severity = document.getElementById("severitySelect").value;
             fetch('/logs-view/create_anomaly', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ index: indexName, id: docId })
-            })
+              body: JSON.stringify({ index: indexName, id: docId, severity: severity })
+            }).then(response => {
+              if (response.ok) {
+                alert("Anomalia criada com sucesso!");
+              } else {
+                alert("Erro ao criar anomalia.");
+                console.log(response);
+              }
+            });
           }
         },
         { label: 'Cancelar', onClick: () => {} }
@@ -106,10 +129,12 @@
   }
 </script>
 <style>
-  .search-input {
-    margin-bottom: 10px;
-    padding: 5px;
-    width: 320px;
+  .search-form {
+    margin-bottom: 15px;
+  }
+  .search-form input {
+    margin-right: 6px;
+    margin-bottom: 6px;
   }
   .pagination {
     margin-top: 18px;
@@ -124,8 +149,58 @@
   }
   .mono {
     font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
-    font-size: 16px;
+    font-size: 14px;
     white-space: pre-wrap;
   }
+
+  .search-form {
+  display: flex;
+  flex-wrap: wrap;       /* inputs quebram linha se não couberem */
+  gap: 10px;             /* espaçamento entre inputs */
+  margin-bottom: 20px;
+  padding: 12px;
+  border-radius: 8px;
+}
+
+/* Inputs */
+.search-form input[type="text"],
+.search-form input[type="datetime-local"] {
+  padding: 8px 12px;
+  border: 1px solid #ccc;
+  border-radius: 6px;
+  font-size: 14px;
+  flex: 1;                /* ocupa espaço disponível */
+  min-width: 180px;       /* largura mínima */
+  max-width: 210px;
+  box-sizing: border-box;
+}
+
+.search-form input:focus {
+  outline: none;
+  box-shadow: 0 0 4px rgba(37, 99, 235, 0.4);
+}
+
+/* Labels inline */
+.search-form label {
+  align-self: center;
+  font-weight: 500;
+  margin-right: 4px;
+}
+
+/* Botão Pesquisar */
+.search-form button {
+  color: white;
+  border: none;
+  border-radius: 6px;
+  padding: 8px 14px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s ease;
+  border: 1px solid var(--color-border1);
+}
+
+.search-form button:hover {
+}
 </style>
 {% endblock %}
