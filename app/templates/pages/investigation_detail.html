@@ -27,7 +27,7 @@
                 <span><strong>{{ anomaly.id }}:</strong> {{ anomaly.description }}</span>
                 <form action="{{ url_for('investigation.remove_anomaly', inv_id=investigation.id, anomaly_id=anomaly.id) }}" method="POST" class="mb-0">
                     <input type="hidden" name="_method" value="DELETE">
-                    <button type="submit" class="btn btn-danger">Remover</button>
+                    <button type="submit" class="btn btn-danger">Remover <i class="fas fa-trash"></i></button>
                 </form>
             </li>
         {% endfor %}
@@ -46,7 +46,7 @@
                 <small class="text-muted">{{ note.created_at.strftime("%d/%m/%Y %H:%M") }}</small>
                 <form action="{{ url_for('investigation.delete_note', inv_id=investigation.id, note_id=note.id) }}" method="POST" class="mb-0">
                     <input type="hidden" name="_method" value="DELETE">
-                    <button type="submit" class="btn btn-danger">Remover</button>
+                    <button type="submit" class="btn btn-danger">Remover <i class="fas fa-trash"></i></button>
                 </form>
             </li>
         {% endfor %}
@@ -60,7 +60,7 @@
         <div class="mb-2">
             <textarea name="content" class="form-control" rows="3" placeholder="Escreve a nota..." required></textarea>
         </div>
-        <button type="submit" class="btn btn-primary btn-sm">Adicionar</button>
+        <button type="submit" class="btn btn-primary btn-sm">Adicionar <i class="fas fa-plus"></i></button>
     </form>
 
     <h3>Carregar novo ficheiro</h3>
@@ -68,7 +68,7 @@
         <div class="mb-2">
             <input type="file" name="file" required>
         </div>
-        <button type="submit" class="btn btn-primary btn-sm">Carregar</button>
+        <button type="submit" class="btn btn-primary btn-sm">Carregar <i class="fas fa-upload"></i></button>
     </form>
 
     <h3>Ficheiros associados</h3>
@@ -81,7 +81,7 @@
                 </a>
                 <form action="{{ url_for('investigation.delete_file', inv_id=investigation.id, file_id=file.id) }}" method="POST" class="mb-0">
                     <input type="hidden" name="_method" value="DELETE">
-                    <button type="submit" class="btn btn-danger">Apagar</button>
+                    <button type="submit" class="btn btn-danger">Apagar <i class="fas fa-trash"></i></button>
                 </form>
             </li>
         {% endfor %}
@@ -91,7 +91,7 @@
     {% endif %}
 
     <button type="button" class="table-button" onclick="window.location.href='{{ url_for('investigation.list')}}'">
-        Voltar
+        Voltar <i class="fas fa-arrow-left"></i>
     </button>
 </div>
 
