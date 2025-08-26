@@ -39,7 +39,13 @@
           <td>{{ a.source }}</td>
           <td class="descricao">{{ a.description }}</td>
           <td>{{ a.severity }}</td>
-          <td>{{ 'Sim' if a.resolved else 'Não' }}</td>
+          <td>
+            {{ (
+              '<span style="background-color: rgba(128, 128, 128, 0.486); border-radius: 5px; padding: 5px">'
+              + ('Sim <i style="color: green;" class="fas fa-check"></i>' if a.resolved else 'Não <i style="color: red;" class="fas fa-times"></i>')
+              + '</span>'
+            ) | safe }}
+          </td>
           <td class="acoes">
             <button class="table-button" onclick="showModal({
             title: 'Confirmar resolução',
@@ -53,25 +59,26 @@
               { label: 'Cancelar', onClick: () => {} },
             ]
           })">
-              Marcar como resolvido
+              Marcar como resolvido <i class="fas fa-check"></i>
             </button>
 
             <button class="table-button" onclick="showModal({
-                          title: 'Iniciar Investigação',
-                          body: '<p>Queres iniciar uma investigação com base nesta anomalia?</p>',
-                          actions: [
-                            { label: 'Iniciar', onClick: () => {
-                                fetch(`/investigations/start/{{ a.id }}`, { method: 'POST' })
-                                  .then(() => location.reload());
-                              }},
-                            { label: 'Cancelar', onClick: () => {} },
-                          ]
-                        })">
-              Iniciar investigação
+                    title: 'Iniciar Investigação',
+                    body: '<p>{% if a.investigacao %}A anomalia já tem investigação criada, deseja continuar?{% else %}Queres iniciar uma investigação com base nesta anomalia?{% endif %}</p>',
+                    actions: [
+                    { label: 'Iniciar', onClick: () => {
+                      console.log({{ a.investigacao }});
+                      fetch(`/investigations/start/{{ a.id }}`, { method: 'POST' })
+                        .then(() => console.log('Investigação iniciada'));
+                      }},
+                    { label: 'Cancelar', onClick: () => {} },
+                    ]
+                  })">
+              Iniciar investigação <i class="fas fa-play"></i>
             </button>
 
             <button class="table-button" onclick="showAddToInvestigationModal({{ a.id }})">
-              Adicionar a investigação
+              Adicionar a investigação <i class="fas fa-plus"></i>
             </button>
           </td>
         </tr>

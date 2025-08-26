@@ -21,7 +21,6 @@ def list_anomalies():
 
     query = Anomaly.query
     if investigacao_filter is not None:
-        # filter by whether there is an Investigation associated with the anomaly
         exists_q = Anomaly.investigations.any()
         if investigacao_filter:
             query = query.filter(exists_q)
@@ -31,12 +30,18 @@ def list_anomalies():
     pagination = query.order_by(Anomaly.timestamp.desc()) \
                       .paginate(page=page, per_page=per_page, error_out=False)
 
+    # Garante que cada anomalia tem o atributo .investigacao como True/False
+    anomalies = []
+    for a in pagination.items:
+        a.investigacao = bool(a.investigations)   # True se tiver investigações, False se não
+        anomalies.append(a)
+
     start_page = max(1, pagination.page - 2)
     end_page   = min(pagination.pages, pagination.page + 2)
 
     return render_template(
         'pages/anomalies.html',
-        anomalies=pagination.items,
+        anomalies=anomalies,
         pagination=pagination,
         start_page=start_page,
         end_page=end_page,

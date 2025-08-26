@@ -41,8 +41,8 @@
                     <td>{{ i.created_at.strftime('%Y-%m-%d %H:%M:%S') }}</td>
                     <td>{{ i.updated_at.strftime('%Y-%m-%d %H:%M:%S') }}</td>
                     <td>
-                        {% if i.state == 'open' %}<span class="badge bg-warning">Aberto</span>{% endif %}
-                        {% if i.state == 'closed' %}<span class="badge bg-success">Concluído</span>{% endif %}
+                        {% if i.state == 'open' %}<span class="badge bg-warning" style="background-color: rgba(128, 128, 128, 0.486); border-radius: 5px; padding: 5px">Aberto <i style="color: rgb(255, 0, 0);" class="fas fa-exclamation"></i></span>{% endif %}
+                        {% if i.state == 'closed' %}<span class="badge bg-success" style="background-color: rgba(128, 128, 128, 0.486); border-radius: 5px; padding: 5px">Concluído <i style="color: green;" class="fas fa-check"></i></span>{% endif %}
                     </td>
                     <td>
                         {{ i.anomalies|length }}
@@ -62,12 +62,12 @@
                                     }},
                                     { label: 'Cancelar', onClick: () => {} }
                                 ]
-                            })">Concluir</button>
+                            })">Concluir <i class="fas fa-check"></i></button>
                         {% endif %}
                         
                         <button type="button" class="table-button"
                                 onclick="window.location.href='{{ url_for('investigation.detail', id=i.id) }}'">
-                            Ver
+                            Ver <i class="fas fa-eye"></i>
                         </button>
 
                     </td>
