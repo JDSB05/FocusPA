@@ -14,15 +14,17 @@ rag_bp = Blueprint("rag", __name__)
 @login_required
 def rag_query():
     data = request.get_json(silent=True) or {}
-    question = data.get("question", "")
-    if not question:
-        return jsonify({"error": "Missing 'question' field"}), 400
+    question = (data.get("question") or "").strip()
+    messages = data.get("messages") or []  # histórico vindo do browser (lista de {role, content})
+
+    if not question and not (isinstance(messages, list) and len(messages) > 0):
+        return jsonify({"error": "Missing 'question' or 'messages'"}), 400
 
     def generate():
         start_time = time.time()
         try:
             # stream apenas do texto final (o mais simples possível)
-            for chunk in query_hybrid_rag_stream(question):
+            for chunk in query_hybrid_rag_stream(question=question, messages=messages):
                 # enviar logo que chega
                 yield chunk
         except Exception as e:

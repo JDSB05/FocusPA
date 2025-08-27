@@ -68,7 +68,7 @@
 
             <button class="table-button" onclick="showModal({
                     title: 'Iniciar Investigação',
-                    body: '<p>{% if a.investigacao %}A anomalia já tem investigação criada, deseja continuar?{% else %}Queres iniciar uma investigação com base nesta anomalia?{% endif %}</p>',
+                    body: '<p>{% if a.investigacao %}A anomalia já tem investigação associada, deseja continuar?{% else %}Queres iniciar uma investigação com base nesta anomalia?{% endif %}</p>',
                     actions: [
                     { label: 'Iniciar', onClick: () => {
                       console.log({{ a.investigacao }});

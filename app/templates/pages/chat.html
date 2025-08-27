@@ -31,12 +31,14 @@
 <script src="https://cdn.jsdelivr.net/npm/highlight.js@11.9.0/lib/highlight.min.js"></script>
 
 <script>
-  const form = document.getElementById('form');
-  const input = document.getElementById('message');
-  const chatBox = document.getElementById('chat-box');
-  const sendBtn = document.getElementById('send-btn');
-  let controller = null;
-  let isStreaming = false;
+  const form     = document.getElementById('form');
+  const input    = document.getElementById('message');
+  const chatBox  = document.getElementById('chat-box');
+  const sendBtn  = document.getElementById('send-btn');
+
+  let controller   = null;
+  let isStreaming  = false;
+  const history    = []; // [{role:'user'|'assistant'|'system', content:'...'}]
 
   function addMessage(text, sender) {
     const placeholder = document.getElementById('chat-placeholder');
@@ -63,6 +65,7 @@
       pre.textContent = text || '';
       content.appendChild(pre);
     } else {
+      // user msg -> sanitiza e permite quebras de linha
       const safeUser = DOMPurify.sanitize(text).replace(/\n/g, '<br>');
       content.innerHTML = safeUser;
     }
@@ -74,16 +77,43 @@
     return msg;
   }
 
+  function updateSendButton() {
+    if (isStreaming) {
+      sendBtn.innerHTML = '<i class="fa fa-stop"></i>';
+      sendBtn.classList.add('cancel-mode');
+      sendBtn.type = 'button';
+    } else {
+      sendBtn.innerHTML = '<i class="fa fa-paper-plane"></i>';
+      sendBtn.classList.remove('cancel-mode');
+      sendBtn.type = 'submit';
+    }
+  }
+
+  function cancelAnswer() {
+    if (controller) {
+      controller.abort();
+      controller = null;
+      console.log('[INFO] Pedido cancelado pelo utilizador.');
+    }
+    isStreaming = false;
+    updateSendButton();
+  }
+
   async function streamAnswer(question, targetMsgEl) {
     controller = new AbortController();
     const signal = controller.signal;
     isStreaming = true;
     updateSendButton();
 
+    const payload = {
+      question,
+      messages: history  // envia histórico do browser
+    };
+
     const response = await fetch('/rag', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ question }),
+      body: JSON.stringify(payload),
       signal
     });
 
@@ -102,10 +132,10 @@
       return;
     }
 
-    const reader = response.body.getReader();
+    const reader  = response.body.getReader();
     const decoder = new TextDecoder();
-    let accum = '';
-    const pre = targetMsgEl.querySelector('pre.streaming');
+    let accum     = '';
+    const pre     = targetMsgEl.querySelector('pre.streaming');
 
     try {
       while (true) {
@@ -122,38 +152,20 @@
       console.log('[INFO] Stream cancelada/interrompida:', err);
     }
 
+    // Render final (Markdown -> HTML)
     const rendered = marked.parse(accum || '');
     const safeHtml = DOMPurify.sanitize(rendered);
-    const content = targetMsgEl.querySelector('.content');
+    const content  = targetMsgEl.querySelector('.content');
     content.innerHTML = safeHtml;
     if (window.hljs) hljs.highlightAll();
     chatBox.scrollTop = chatBox.scrollHeight;
 
+    // guarda a resposta completa no histórico
+    history.push({ role: 'assistant', content: accum });
+
     isStreaming = false;
     updateSendButton();
   }
-
-  function cancelAnswer() {
-    if (controller) {
-      controller.abort();
-      controller = null;
-      console.log('[INFO] Pedido cancelado pelo utilizador.');
-    }
-    isStreaming = false;
-    updateSendButton();
-  }
-
-  function updateSendButton() {
-  if (isStreaming) {
-    sendBtn.innerHTML = '<i class="fa fa-stop"></i>';
-    sendBtn.classList.add('cancel-mode');
-    sendBtn.type = 'button'; // evita validação do form
-  } else {
-    sendBtn.innerHTML = '<i class="fa fa-paper-plane"></i>';
-    sendBtn.classList.remove('cancel-mode');
-    sendBtn.type = 'submit'; // volta a enviar perguntas normalmente
-  }
-}
 
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
@@ -166,7 +178,11 @@
     const question = input.value.trim();
     if (!question) return;
 
-    const userMsg = addMessage(question, 'user');
+    // UI + histórico (user)
+    addMessage(question, 'user');
+    history.push({ role: 'user', content: question });
+
+    // placeholder assistant
     const assistantMsg = addMessage('', 'assistant');
 
     input.value = '';

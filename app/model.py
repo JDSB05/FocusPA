@@ -148,9 +148,7 @@ def create_test_anomalies():
             severity=choice(["low", "medium", "high"]), # type: ignore
         )
         anomalies.append(anomaly)
-    print("Test anomalies created:")
-    for a in anomalies:
-        print(f" - {a}")
+    print("Test anomalies created")
     db.session.bulk_save_objects(anomalies)
     db.session.commit()
 

@@ -4,6 +4,7 @@ import os
 import re
 import json
 import requests
+from ollama import Client
 
 from sentence_transformers import util
 from sentence_transformers import SentenceTransformer
@@ -18,8 +19,13 @@ EMBED_MODEL = os.environ.get(
     "PORTULAN/serafim-900m-portuguese-pt-sentence-encoder"
     # alternativa mínima (multilingue): "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
 )
-LLM_URL = os.environ.get("LLM_URL", "http://localhost:11434/api/generate")
+LLM_URL = os.environ.get("LLM_URL", "http://localhost:11434")
 LLM_MODEL = os.environ.get("LLM_MODEL", "deepseek-r1")
+
+ollama = Client(
+  host=LLM_URL,
+  headers={'x-some-header': 'some-value'}
+)
 
 # ===== Embeddings =====
 embedder = SentenceTransformer(EMBED_MODEL)
@@ -127,58 +133,80 @@ def _g(d, path, default=None):
     return cur if cur is not None else default
 
 # ===== LLM (não-stream, compat) =====
+
 def ask_llm(prompt: str, model: str) -> str:
     try:
-        print("[ask_llm] Enviando prompt para LLM...")
+        print(f"[ask_llm] Enviando prompt para modelo '{model}'...")
         prompt = prompt.lstrip("\u0001")
-        resp = requests.post(
-            LLM_URL,
-            json={"model": model, "prompt": prompt, "stream": False},
-            timeout=None,
+
+        # Chamada ao Ollama (lib Python)
+        response = ollama.chat(
+            model=model,
+            messages=[{"role": "user", "content": prompt}],
         )
-        data = resp.json()
-        preview = json.dumps(data, ensure_ascii=False)
-        print(f"[ask_llm] Resposta recebida do LLM: {data['response']}")
-        if "response" in data:
-            return delete_think(data["response"])
-        if "message" in data and "content" in data["message"]:
-            return delete_think(data["message"]["content"])
-        raise RuntimeError(f"Resposta inesperada do LLM: {data}")
+
+        # Extrair a resposta do LLM
+        if "message" in response and "content" in response["message"]:
+            answer = response["message"]["content"]
+        elif "response" in response:
+            answer = response["response"]
+        else:
+            raise RuntimeError(f"Resposta inesperada do LLM: {response}")
+
+        print(f"[ask_llm] Resposta recebida do LLM: {answer[:80]}...")
+        return delete_think(answer)
+
     except Exception as e:
         return f"❌ Erro ao contactar o LLM: {e}"
 
 # ===== LLM (stream) =====
-def ask_llm_stream(prompt: str):
+def ask_llm_stream(
+    prompt: str | None = None,
+    model: str = LLM_MODEL,
+    messages: list[dict] | None = None
+):
     """
-    Gera chunks de texto à medida que chegam do LLM. Mantém o <think> se o modelo o emitir.
-    Compatível com Ollama /api/generate (JSON por linha com 'response' e 'done').
+    Stream de resposta do LLM via biblioteca ollama.
+    Se `messages` vier do browser, envia-as tal como estão (formato chat):
+      [{"role":"system"|"user"|"assistant", "content":"..."}]
+    Caso contrário, usa um único prompt como mensagem de utilizador.
     """
     try:
-        with requests.post(
-            LLM_URL,
-            json={"model": LLM_MODEL, "prompt": prompt, "stream": True},
-            stream=True,
-            timeout=None,
-        ) as resp:
-            resp.raise_for_status()
-            for raw in resp.iter_lines():
-                if not raw:
-                    continue
-                if isinstance(raw, bytes):
-                    raw = raw.decode("utf-8", errors="ignore")
-                line = raw.strip()
+        # Normaliza mensagens vindas do browser (se existirem)
+        if messages and isinstance(messages, list):
+            msgs = []
+            for m in messages:
+                role = (m.get("role") or "user").lower()
+                content = (m.get("content") or "").lstrip("\u0001")
+                if content:
+                    msgs.append({"role": role, "content": content})
+            # se só vieram mensagens do assistente, garante última do user
+            if (not msgs or msgs[-1]["role"] not in ("user", "system")) and prompt:
+                msgs.append({"role": "user", "content": prompt.lstrip("\u0001")})
+            if not msgs:
+                raise ValueError("ask_llm_stream: histórico vazio.")
+        else:
+            # fallback: single-turn com prompt
+            if not isinstance(prompt, str) or not prompt.strip():
+                raise ValueError("ask_llm_stream: precisa de `prompt` ou `messages`.")
+            msgs = [{"role": "user", "content": prompt.lstrip("\u0001")}]
 
-                try:
-                    obj = json.loads(line)
-                    if "response" in obj:
-                        yield obj["response"]
-                    elif "message" in obj and isinstance(obj["message"], dict) and "content" in obj["message"]:
-                        yield obj["message"]["content"]
-                    if obj.get("done") is True:
-                        break
-                except Exception:
-                    # fallback: texto cru
-                    yield line
+        # Streaming com Ollama
+        stream = ollama.chat(
+            model=model,
+            messages=msgs,
+            stream=True,
+        )
+
+        for chunk in stream:
+            # Cada chunk pode vir como {"message": {"content": "..."}}
+            # ou (alguns modelos) {"response": "..."}
+            content = (chunk.get("message") or {}).get("content") or chunk.get("response")
+            if content:
+                yield content
+            if chunk.get("done"):
+                break
+
     except Exception as e:
         yield f"\n❌ Erro ao contactar o LLM: {e}\n"
 
@@ -188,7 +216,10 @@ def reformulate_for_es(question: str) -> str:
 Reformula a pergunta para uma query Elasticsearch em JSON válido, SEM comentários ou texto fora do JSON.
 Regras:
 - Se a pergunta incluir vários valores para um campo, usar "terms" (plural) em vez de "term".
-- Colocar filtros temporais (intervalos de datas) dentro de "filter" e não "must".
+- Colocar filtros temporais (intervalos de datas) **sempre dentro de "range"**, nunca diretamente como chave.
+  Exemplo correto:
+  {{ "range": {{ "@timestamp": {{ "gte": "...", "lte": "..." }} }} }}
+- Colocar filtros temporais dentro de "filter" e não "must".
 - Devolver apenas JSON válido, nada mais.
 - Se a pergunta for muito vaga e não houver dados suficientes para gerar a query, devolver apenas: null
 
@@ -351,21 +382,50 @@ def query_hybrid_rag(question: str, time_from: str | None = None, time_to: str |
     return ask_llm(final_prompt, LLM_MODEL)
 
 # ----- RAG (stream)
-def query_hybrid_rag_stream(question: str, time_from: str | None = None, time_to: str | None = None):
-    refined = reformulate_for_es(question)
+def query_hybrid_rag_stream(
+    question: str,
+    time_from: str | None = None,
+    time_to: str | None = None,
+    messages: list[dict] | None = None,   # histórico do browser
+    model: str = LLM_MODEL,                # usa o teu default
+):
+    """
+    Constrói contexto via RAG (ES + Chroma), injeta como mensagem SYSTEM
+    e envia para o LLM juntamente com o histórico do browser (messages).
+    """
+    # Pergunta efetiva a usar no RAG (se question vier vazio, tenta última do user)
+    def _last_user_question(msgs):
+        if not isinstance(msgs, list):
+            return ""
+        for m in reversed(msgs):
+            if (m.get("role") or "").lower() == "user":
+                txt = (m.get("content") or "").strip()
+                if txt:
+                    return txt
+        return ""
+
+    final_question = (question or "").strip() or _last_user_question(messages)
+    if not final_question:
+        yield "Pergunta vazia."
+        return
+
+    refined = reformulate_for_es(final_question)
     print(f"[INFO] Query reformulada (stream): {refined!r}")
 
     if is_nullish_query(refined):
         yield "A pergunta é demasiado vaga para pesquisa. Especifica melhor (ex.: intervalo temporal, event_id, user.name)."
         return
 
+    # ---- Elasticsearch ----
     es_docs = es_search(refined, time_from=time_from, time_to=time_to, size=20)
     es_blocks = [
         f"@timestamp={d.get('@timestamp')} event.code={_g(d,'event.code')} "
         f"winlog.event_id={_g(d,'winlog.event_id')} user.name={_g(d,'user.name')}\n{d.get('message','')}"
         for d in es_docs
     ]
-    chroma_pairs = chroma_search(question, top_k=5)
+
+    # ---- Chroma (políticas) ----
+    chroma_pairs = chroma_search(final_question, top_k=5)  # usa pergunta natural
     chroma_blocks = [f"[POLICY]\n{p['text']}" for p in chroma_pairs if p.get("text")]
 
     blocks = es_blocks + chroma_blocks
@@ -373,6 +433,43 @@ def query_hybrid_rag_stream(question: str, time_from: str | None = None, time_to
         yield "Não encontrei contexto relevante no Elasticsearch nem no Chroma para responder."
         return
 
-    final_prompt = build_final_prompt(blocks[:12], question)
-    for piece in delete_think_stream(ask_llm_stream(final_prompt)):
-        yield piece
+    # ---- Mensagem SYSTEM com o contexto RAG ----
+    context = "\n\n---\n\n".join(blocks[:12])
+    system_ctx = (
+        "Contexto (logs e políticas relevantes):\n"
+        f"{context}\n\n"
+        "Instruções:\n"
+        "- Responde de forma técnica e sucinta, como perito em Windows Event Logs (segurança/auditoria).\n"
+        "- Usa apenas o contexto acima. Se faltar informação, diz explicitamente o que falta.\n"
+        f"- Hoje é {datetime.utcnow().isoformat()}Z.\n"
+    )
+
+    # ---- Normaliza histórico do browser (mantém últimas N mensagens) ----
+    N = 12
+    norm_msgs = []
+    if isinstance(messages, list):
+        for m in messages[-N:]:
+            role = (m.get("role") or "user").lower()
+            content = (m.get("content") or "").lstrip("\u0001")
+            if content:
+                norm_msgs.append({"role": role, "content": content})
+
+    # Garante que a última mensagem do histórico é a 'final_question' (do user)
+    if not norm_msgs or norm_msgs[-1]["role"] != "user":
+        norm_msgs.append({"role": "user", "content": final_question})
+
+    # ---- Compose mensagens para o LLM (SYSTEM + histórico do browser) ----
+    combined_messages = [{"role": "system", "content": system_ctx}] + norm_msgs
+
+    # ---- Chamada ao LLM em stream (com limpeza do <think> se aplicares) ----
+    try:
+        for piece in delete_think_stream(
+            ask_llm_stream(
+                prompt=None,  # usamos messages
+                model=model,
+                messages=combined_messages
+            )
+        ):
+            yield piece
+    except Exception as e:
+        yield f"\n❌ Erro ao contactar o LLM: {e}\n"
