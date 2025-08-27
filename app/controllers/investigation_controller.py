@@ -1,6 +1,7 @@
 from flask import jsonify, request, render_template, send_file, redirect, url_for
 from io import BytesIO
 from flask_login import current_user
+from datetime import datetime, timedelta
 from ..model import Anomaly, Investigation, File, db, Note
 from ..utils.pagination import paginate
 
@@ -38,10 +39,25 @@ def complete_investigation(id):
     return jsonify({"message": "Investigação concluída com sucesso"})
 
 def list_investigations():
-    """Lista investigações utilizando paginação reutilizável."""
+    """Lista investigações com filtros e paginação reutilizável."""
 
-    items, pagination, start_page, end_page = paginate(
-        Investigation.query.order_by(Investigation.created_at.desc()), per_page=20
+    query = Investigation.query
+
+    state = request.args.get('state')
+    if state:
+        query = query.filter(Investigation.state == state)
+
+    date_str = request.args.get('date')
+    if date_str:
+        try:
+            start = datetime.strptime(date_str, '%Y-%m-%d')
+            end = start + timedelta(days=1)
+            query = query.filter(Investigation.created_at >= start, Investigation.created_at < end)
+        except ValueError:
+            pass
+
+    items, pagination, start_page, end_page, args = paginate(
+        query.order_by(Investigation.created_at.desc()), per_page=20
     )
 
     return render_template(
@@ -49,7 +65,8 @@ def list_investigations():
         investigations=items,
         pagination=pagination,
         start_page=start_page,
-        end_page=end_page
+        end_page=end_page,
+        args=args
     )
 
 def investigation_detail(id):

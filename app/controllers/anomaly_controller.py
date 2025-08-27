@@ -1,5 +1,6 @@
 from flask import render_template, request, jsonify, flash
 import flask
+from datetime import datetime, timedelta
 
 from ..extensions import db
 from ..model import Anomaly, Investigation
@@ -7,9 +8,11 @@ from ..utils.pagination import paginate
 
 
 def list_anomalies():
-    """Lista anomalias com paginação automática."""
+    """Lista anomalias com paginação e filtros do lado do servidor."""
 
-    # Filtro por campo booleano "investigacao" (true/false)
+    query = Anomaly.query
+
+    # Filtro por existencia de investigação
     investigacao_param = request.args.get('investigacao')
     investigacao_filter = None
     if investigacao_param is not None:
@@ -18,16 +21,31 @@ def list_anomalies():
             investigacao_filter = True
         elif val in {'0', 'false', 'f', 'no', 'n', 'off'}:
             investigacao_filter = False
-
-    query = Anomaly.query
     if investigacao_filter is not None:
         exists_q = Anomaly.investigations.any()
-        if investigacao_filter:
-            query = query.filter(exists_q)
-        else:
-            query = query.filter(~exists_q)
+        query = query.filter(exists_q if investigacao_filter else ~exists_q)
 
-    items, pagination, start_page, end_page = paginate(
+    # Filtros adicionais
+    severity = request.args.get('severity')
+    if severity:
+        query = query.filter(Anomaly.severity == severity)
+
+    state = request.args.get('state')
+    if state == 'resolved':
+        query = query.filter(Anomaly.resolved.is_(True))
+    elif state == 'unresolved':
+        query = query.filter(Anomaly.resolved.is_(False))
+
+    date_str = request.args.get('date')
+    if date_str:
+        try:
+            start = datetime.strptime(date_str, '%Y-%m-%d')
+            end = start + timedelta(days=1)
+            query = query.filter(Anomaly.timestamp >= start, Anomaly.timestamp < end)
+        except ValueError:
+            pass
+
+    items, pagination, start_page, end_page, args = paginate(
         query.order_by(Anomaly.timestamp.desc()), per_page=20
     )
 
@@ -43,7 +61,8 @@ def list_anomalies():
         pagination=pagination,
         start_page=start_page,
         end_page=end_page,
-        investigacao=investigacao_filter
+        investigacao=investigacao_filter,
+        args=args
     )
 
 def get_anomaly(anomaly_id: int):

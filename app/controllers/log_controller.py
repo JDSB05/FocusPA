@@ -78,9 +78,9 @@ def list_logs():
 
     # Só executa query se houver filtros
     if not filters:
-        _, pagination, start_page, end_page = paginate([], page=page, per_page=per_page, total=0)
+        _, pagination, start_page, end_page, args = paginate([], page=page, per_page=per_page, total=0)
         return render_template(
-            "pages/logs.html", logs=[], pagination=pagination, start_page=start_page, end_page=end_page
+            "pages/logs.html", logs=[], pagination=pagination, start_page=start_page, end_page=end_page, args=args
         )
 
     query = {"bool": {"must": filters}}
@@ -92,14 +92,15 @@ def list_logs():
         page=page
     )
 
-    _, pagination, start_page, end_page = paginate(logs, page=page, per_page=per_page, total=total)
+    _, pagination, start_page, end_page, args = paginate(logs, page=page, per_page=per_page, total=total)
 
     return render_template(
         "pages/logs.html",
         logs=logs,
         pagination=pagination,
         start_page=start_page,
-        end_page=end_page
+        end_page=end_page,
+        args=args
     )
 
 

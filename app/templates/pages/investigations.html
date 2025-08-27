@@ -6,20 +6,17 @@
 <div class="container">
     <h1>Investigações</h1>
 
-    <div class="mb-3 d-flex gap-3 align-items-center">
-        <div>
-            <label>Filtrar por estado:</label>
-            <select id="stateFilter" class="form-select w-auto d-inline">
-                <option value="">Todos</option>
-                <option value="open">Aberto</option>
-                <option value="closed">Concluído</option>
-            </select>
-        </div>
-        <div>
-            <label>Filtrar por data:</label>
-            <input type="date" id="dateFilter" class="form-control w-auto d-inline" />
-        </div>
-    </div>
+    <form method="get" action="{{ url_for('investigation.list') }}" class="search-form">
+        <select name="state">
+            <option value="">Estado</option>
+            <option value="open" {{ 'selected' if request.args.get('state') == 'open' else '' }}>Aberto</option>
+            <option value="closed" {{ 'selected' if request.args.get('state') == 'closed' else '' }}>Concluído</option>
+        </select>
+
+        <input type="date" name="date" value="{{ request.args.get('date','') }}">
+
+        <button type="submit"><i class="fa fa-search"></i></button>
+    </form>
 
     <div class="table-responsive" id="investigationsTable">
         <table class="table-data">
@@ -36,7 +33,7 @@
             </thead>
             <tbody>
                 {% for i in investigations %}
-                <tr data-state="{{ i.state }}" data-date="{{ i.created_at.strftime('%Y-%m-%d') }}">
+                <tr>
                     <td>{{ i.title }}</td>
                     <td>{{ i.responsible.username if i.responsible else 'Não definido' }}</td>
                     <td>{{ i.created_at.strftime('%Y-%m-%d %H:%M:%S') }}</td>
@@ -81,29 +78,56 @@
             </tbody>
         </table>
 
-        {{ pagination_nav(pagination, 'investigation.list', start_page, end_page) }}
+        {{ pagination_nav(pagination, 'investigation.list', start_page, end_page, args=args) }}
     </div>
 </div>
-
-<script>
-    function applyFilters() {
-        const stateFilter = document.getElementById('stateFilter').value;
-        const dateFilter = document.getElementById('dateFilter').value;
-
-        document.querySelectorAll('#investigationsTable tbody tr').forEach(row => {
-            const matchState = !stateFilter || row.dataset.state === stateFilter;
-            const matchDate = !dateFilter || row.dataset.date === dateFilter;
-            row.style.display = (matchState && matchDate) ? '' : 'none';
-        });
-    }
-
-    document.getElementById('stateFilter').addEventListener('change', applyFilters);
-    document.getElementById('dateFilter').addEventListener('change', applyFilters);
-</script>
 
 <style>
     .badge {
         font-size: 0.9rem;
+    }
+
+    .search-form {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-bottom: 20px;
+      padding: 12px;
+      border-radius: 8px;
+    }
+
+    .search-form input[type="text"],
+    .search-form input[type="date"],
+    .search-form select {
+      padding: 8px 12px;
+      border: 1px solid #ccc;
+      border-radius: 6px;
+      font-size: 14px;
+      flex: 1;
+      min-width: 180px;
+      max-width: 210px;
+      box-sizing: border-box;
+    }
+
+    .search-form input:focus,
+    .search-form select:focus {
+      outline: none;
+      box-shadow: 0 0 4px rgba(37, 99, 235, 0.4);
+    }
+
+    .search-form button {
+      color: white;
+      border: none;
+      border-radius: 6px;
+      padding: 8px 14px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.2s ease;
+      border: 1px solid var(--color-border1);
+    }
+
+    .search-form button:hover {
     }
 </style>
 {% endblock %}

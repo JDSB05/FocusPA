@@ -12,7 +12,9 @@ def paginate(data_source, page=None, per_page=None, total=None):
     explicitly supplied.
 
     Returns a tuple of ``items``, ``pagination`` object and the calculated
-    ``start_page`` and ``end_page`` for navigation widgets.
+    ``start_page`` and ``end_page`` for navigation widgets. The last element
+    of the tuple is a dictionary with all request arguments except
+    ``page``/``per_page`` to easily preserve filters across links.
     """
     if page is None:
         page = request.args.get('page', 1, type=int)
@@ -40,5 +42,8 @@ def paginate(data_source, page=None, per_page=None, total=None):
 
     start_page = max(1, pagination.page - 2)
     end_page = min(pagination.pages, pagination.page + 2)
+    args = request.args.to_dict(flat=True)
+    args.pop('page', None)
+    args.pop('per_page', None)
 
-    return items, pagination, start_page, end_page
+    return items, pagination, start_page, end_page, args

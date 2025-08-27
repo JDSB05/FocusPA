@@ -57,8 +57,6 @@
     </table>
     </div>
 
-  {% set args = request.args.to_dict() %}
-  {% set _ = args.pop('page', None) %}
   {{ pagination_nav(pagination, 'log.list_logs', start_page, end_page, args=args) }}
   {% endif %}
 
