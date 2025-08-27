@@ -8,10 +8,7 @@
     <div class="card mb-3">
         <div class="card-body">
             <p class="card-text"><strong>Descrição:</strong> {{ investigation.description or "Sem descrição" }}</p>
-            <p class="card-text"><strong>Estado:</strong> 
-                {% if investigation.state == 'open' %}Aberto{% endif %}
-                {% if investigation.state == 'closed' %}Concluído{% endif %}
-            </p>
+            <p class="card-text"><strong>Estado: </strong>{% if investigation.state == 'open' %}Aberto{% endif %}{% if investigation.state == 'closed' %}Concluído{% endif %}</p>
             
             <p class="card-text"><strong>Criada em:</strong> {{ investigation.created_at.strftime("%d/%m/%Y %H:%M") }}</p>
             <p class="card-text"><strong>Atualizada em:</strong> {{ investigation.updated_at.strftime("%d/%m/%Y %H:%M") }}</p>
@@ -24,7 +21,7 @@
         <ul class="list-group mb-3">
         {% for anomaly in investigation.anomalies %}
             <li class="list-group-item d-flex justify-content-between align-items-center">
-                <span><strong>{{ anomaly.id }}:</strong> {{ anomaly.description }}</span>
+                <span><strong>Anomalia Nº {{ anomaly.id }}:</strong> {{ anomaly.description }}</span>
                 <form action="{{ url_for('investigation.remove_anomaly', inv_id=investigation.id, anomaly_id=anomaly.id) }}" method="POST" class="mb-0">
                     <input type="hidden" name="_method" value="DELETE">
                     <button type="submit" class="btn btn-danger">Remover <i class="fas fa-trash"></i></button>
@@ -101,5 +98,125 @@
         cursor: pointer;
         text-decoration: none;
     }
+/* ---------- INVESTIGATION PAGE ---------- */
+
+.container {
+  color: var(--color-text);
+  background: var(--color-main);
+  padding: 20px;
+  border-radius: 10px;
+}
+
+h1, h3, h5 {
+  color: var(--color-white);
+  margin-bottom: 15px;
+}
+
+.card {
+  border: 1px solid var(--color-border1);
+  border-radius: 10px;
+  padding: 10px;
+}
+
+.card-body p {
+  margin: 6px 0;
+  color: var(--color-white);
+  white-space: pre-wrap;   
+  word-wrap: break-word;  
+  font-family: inherit; 
+}
+
+.list-group {
+  border: none;
+}
+
+.list-group-item {
+    color: var(--color-text);
+    border: 1px solid var(--color-border1);
+    border-radius: 6px;
+    margin-bottom: 6px;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px;
+    display: grid;
+    grid-auto-flow: column;
+    grid-column-gap: 10px;
+    white-space: pre-wrap;   /* preserva \n e \t */
+    word-wrap: break-word;   /* evita overflow horizontal */
+    font-family: inherit; 
+}
+
+.list-group-item a {
+  color: var(--color-gpt3); /* verde para destacar links */
+  text-decoration: none;
+  font-weight: 500;
+  
+}
+
+.list-group-item a:hover {
+  text-decoration: underline;
+}
+
+form button {
+  padding: 6px 10px;
+  border-radius: 6px;
+  font-size: 0.9em;
+}
+
+.btn-primary {
+  background-color: var(--color-gpt4);
+  border: none;
+  transition: background 0.2s;
+}
+
+.btn-primary:hover {
+  background-color: var(--color-secondary);
+}
+
+.btn-danger {
+  background-color: #b91c1c;
+  border: none;
+}
+
+.btn-danger:hover {
+  background-color: #dc2626;
+}
+
+textarea.form-control {
+  background: var(--color-main);
+  border: 1px solid var(--color-border1);
+  color: var(--color-text);
+  border-radius: 6px;
+  padding: 10px;
+}
+
+textarea.form-control:focus {
+  outline: none;
+  border-color: var(--color-gpt3);
+  box-shadow: 0 0 0 2px rgba(95,195,25,0.4);
+}
+
+input[type="file"] {
+  background: var(--color-main);
+  color: var(--color-text);
+  border: 1px solid var(--color-border1);
+  border-radius: 6px;
+  padding: 6px;
+}
+
+.table-button {
+  background: var(--color-button-hover);
+  color: var(--color-text);
+  border-radius: 8px;
+  padding: 10px 14px;
+  transition: background 0.2s;
+  margin-top: 15px;
+}
+
+.table-button:hover {
+  background: var(--color-gpt3);
+  color: #fff;
+}
+
 </style>
 {% endblock %}
