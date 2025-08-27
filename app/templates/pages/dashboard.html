@@ -46,7 +46,8 @@
 <!-- Tabela -->
 <div class="table-card">
   <h3>Anomalias mais recentes</h3>
-  <table>
+  <div class="table-responsive">
+  <table class="table-data">
     <thead>
       <tr>
         <th>Data</th>
@@ -60,12 +61,13 @@
       <tr>
         <td>{{ a.timestamp.strftime('%Y-%m-%d %H:%M:%S') }}</td>
         <td>{{ a.source }}</td>
-        <td>{{ a.description }}</td>
+        <td class="descricao">{{ a.description }}</td>
         <td>{{ a.severity }}</td>
       </tr>
       {% endfor %}
     </tbody>
   </table>
+  </div>
 </div>
 {% endblock %}
 

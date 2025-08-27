@@ -545,8 +545,8 @@ think {
   .message pre { overflow-x: auto; margin: 0.5rem 0; }
   .message code { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace; }
 /* Chat styles end */
-/* Access Log styles */
-.table-access-log {
+/* Common table styles */
+.table-data {
     width: 100%;
     max-width: 100%;
     border-collapse: collapse;
@@ -556,7 +556,7 @@ think {
     overflow-wrap: break-word;
 }
 
-.table-access-log thead th {
+.table-data thead th {
     background-color: #343a40;
     color: #ffffff;
     font-weight: 600;
@@ -564,29 +564,29 @@ think {
     padding: 0.75rem 1rem;
 }
 
-.table-access-log tbody tr {
+.table-data tbody tr {
     border-bottom: 1px solid #dee2e6;
 }
 
-.table-access-log tbody tr:hover {
+.table-data tbody tr:hover {
     background-color: #f1f3f5;
 }
 
-.table-access-log td {
+.table-data td {
     padding: 0.75rem 1rem;
     vertical-align: middle;
     color: #212529;
     height: 100%;
 }
 
-.table-access-log td:nth-child(1) {
+.table-data td:nth-child(1) {
     font-style: italic;
     color: #495057;
     width: 40px;
 }
 
-.table-access-log td:nth-child(6),
-.table-access-log td:nth-child(3) {
+.table-data td:nth-child(6),
+.table-data td:nth-child(3) {
     font-variant-numeric: tabular-nums;
     white-space: nowrap;
 }
@@ -622,10 +622,13 @@ think {
 }
 
 .table-button {
-display: inline-block;
-margin-right: 10px;
-background-color: var(--color-main);
-text-align: center;
+  display: inline-block;
+  margin-right: 10px;
+  background-color: var(--color-main);
+  text-align: center;
+  cursor: pointer;
+  text-decoration: none;
+  color: var(--color-text);
 }
 
 .table-button:hover {
@@ -633,14 +636,14 @@ background-color: var(--color-button-hover);
 color: white;
 }
 
-.table-access-log td.descricao {
-  max-width: 80ch;           /* controla largura */
+.table-data td.descricao {
+  width: 60%;               /* controla largura em % para adaptar ao layout */
   white-space: pre-wrap;    /* mantém quebras de linha e quebra se precisar */
   word-wrap: break-word;    /* força quebra se palavra longa */
-  font-family: monospace;   /* opcional: estilo igual ao dos logs */
+  font-family: monospace;   /* estilo igual ao dos logs */
 }
 
-.table-access-log td.acoes {
+.table-data td.acoes {
   display: flex;
   flex-direction: column;   /* empilha em coluna */
   justify-content: center; /* centraliza verticalmente */
@@ -649,10 +652,10 @@ color: white;
   height: 100%;
 }
 
-.table-access-log td.acoes .table-button {
+.table-data td.acoes .table-button {
   width: 100%;              /* opcional: ocupar largura da célula */
 }
-/* Table styles end */
+/* Common table styles end */
 /* Dashboard styles */
 
 .dashboard-container {

@@ -3,14 +3,6 @@
 
 {% block styles %}
 <style>
-  .log-table {
-    width: 100%;
-    border-collapse: collapse;
-  }
-  .log-table th, .log-table td {
-    padding: 8px;
-    border-bottom: 1px solid #ddd;
-  }
   .search-input {
     margin-bottom: 10px;
     padding: 5px;
@@ -30,7 +22,8 @@
 <p>Nenhum registo de acesso disponível.</p>
 {% else %}
 <input type="text" id="search" class="search-input" placeholder="Pesquisar...">
-<table id="logTable" class="table-access-log log-table">
+<div class="table-responsive">
+<table id="logTable" class="table-data">
   <thead>
     <tr>
       <th>Utilizador</th>
@@ -52,6 +45,7 @@
     {% endfor %}
   </tbody>
 </table>
+</div>
 <div class="chart-grid">
 <div class="chart-container">
   <h3>Frequência de Ações</h3>
