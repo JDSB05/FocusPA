@@ -21,7 +21,8 @@
   {% if logs|length == 0 %}
     <p>Nenhum log disponível. Preencha filtros e clique em "Pesquisar".</p>
   {% else %}
-    <table id="logsTable" class="table-access-log">
+    <div class="table-responsive">
+    <table id="logsTable" class="table-data">
       <thead>
         <tr>
           <th>Timestamp</th>
@@ -53,8 +54,9 @@
         {% endfor %}
       </tbody>
     </table>
+    </div>
 
-   {% set args = request.args.to_dict() %}
+  {% set args = request.args.to_dict() %}
 {% set _ = args.pop('page', None) %}
 {% set _ = args.pop('per_page', None) %}
 

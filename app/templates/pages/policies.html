@@ -6,18 +6,12 @@
   .new-policy-button {
     margin-bottom: 20px;
   }
-
-  .table-button {
-    display: inline-block;
-    margin-right: 10px;
-    background-color: var(--color-main);
-  }
 </style>
 <h1>Políticas</h1>
 <button onClick="location.href='{{ url_for('policy.new') }}'" class="new-policy-button">Nova Política</button>
 
 <div class="table-responsive" id="anomaliesTable">
-  <table class="table-access-log">
+  <table class="table-data">
     <thead>
       <tr>
         <th>Nome da Política</th>
