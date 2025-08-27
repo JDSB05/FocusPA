@@ -49,7 +49,5 @@ def create_fake_winlogs():
 
     res = es.bulk(body=actions)
     print(f"[INFO] Insert bulk no índice '{index_name}' completo.")
-    for item in res.get("items", []):
-        print(item)
 
 es = get_client()

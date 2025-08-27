@@ -45,5 +45,4 @@ def paginate(data_source, page=None, per_page=None, total=None):
     args = {k: v[0] for k, v in request.args.lists()}
     args.pop('page', None)
     args.pop('per_page', None)
-    print(args)
     return items, pagination, start_page, end_page, args
