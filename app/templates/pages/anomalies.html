@@ -1,4 +1,5 @@
 {% extends 'layout.html' %}
+{% from 'components/pagination.html' import pagination_nav %}
 {% block title %}Anomalias{% endblock %}
 {% block content %}
 <div class="container">
@@ -89,31 +90,7 @@
         {% endfor %}
       </tbody>
     </table>
-    {% if pagination.pages > 1 %}
-          <nav class="pagination-nav" style="margin-top: 1rem; display:flex; gap:0.25rem;">
-            <!-- Primeira página -->
-            <a class="page-link {{ 'disabled' if not pagination.has_prev }}"
-              href="{{ url_for('anomaly.list_anomalies', page=1) }}">«</a>
-
-            <!-- Página anterior -->
-            <a class="page-link {{ 'disabled' if not pagination.has_prev }}"
-              href="{{ url_for('anomaly.list_anomalies', page=pagination.prev_num or 1) }}">‹</a>
-
-            <!-- Números de página -->
-            {% for p in range(start_page, end_page + 1) %}
-              <a class="page-link {{ 'active' if p == pagination.page }}"
-                href="{{ url_for('anomaly.list_anomalies', page=p) }}">{{ p }}</a>
-            {% endfor %}
-
-            <!-- Página seguinte -->
-            <a class="page-link {{ 'disabled' if not pagination.has_next }}"
-              href="{{ url_for('anomaly.list_anomalies', page=pagination.next_num or pagination.page) }}">›</a>
-
-            <!-- Última página -->
-            <a class="page-link {{ 'disabled' if not pagination.has_next }}"
-              href="{{ url_for('anomaly.list_anomalies', page=pagination.pages) }}">»</a>
-          </nav>
-          {% endif %}
+    {{ pagination_nav(pagination, 'anomaly.list_anomalies', start_page, end_page) }}
   </div>
 </div>
 <script>

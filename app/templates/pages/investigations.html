@@ -1,4 +1,5 @@
 {% extends 'layout.html' %}
+{% from 'components/pagination.html' import pagination_nav %}
 {% block title %}Forense{% endblock %}
 
 {% block content %}
@@ -80,24 +81,7 @@
             </tbody>
         </table>
 
-        {% if pagination.pages > 1 %}
-        <nav class="pagination-nav mt-3 d-flex gap-1">
-            <a class="page-link {{ 'disabled' if not pagination.has_prev }}"
-                href="{{ url_for('investigation.list', page=1) }}">«</a>
-            <a class="page-link {{ 'disabled' if not pagination.has_prev }}"
-                href="{{ url_for('investigation.list', page=pagination.prev_num or 1) }}">‹</a>
-
-            {% for p in range(start_page, end_page + 1) %}
-            <a class="page-link {{ 'active' if p == pagination.page }}"
-                href="{{ url_for('investigation.list', page=p) }}">{{ p }}</a>
-            {% endfor %}
-
-            <a class="page-link {{ 'disabled' if not pagination.has_next }}"
-                href="{{ url_for('investigation.list', page=pagination.next_num or pagination.page) }}">›</a>
-            <a class="page-link {{ 'disabled' if not pagination.has_next }}"
-                href="{{ url_for('investigation.list', page=pagination.pages) }}">»</a>
-        </nav>
-        {% endif %}
+        {{ pagination_nav(pagination, 'investigation.list', start_page, end_page) }}
     </div>
 </div>
 

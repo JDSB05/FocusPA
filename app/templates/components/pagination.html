@@ -1,0 +1,23 @@
+{% macro pagination_nav(pagination, endpoint, start_page, end_page, args=None) %}
+  {% if pagination.pages > 1 %}
+    <nav class="pagination-nav" style="margin-top: 1rem; display:flex; gap:0.25rem;">
+      {% set params = args.copy() if args else {} %}
+      {% set _ = params.update({'page': 1}) %}
+      <a class="page-link {{ 'disabled' if not pagination.has_prev }}" href="{{ url_for(endpoint, **params) }}">«</a>
+
+      {% set _ = params.update({'page': pagination.prev_num or 1}) %}
+      <a class="page-link {{ 'disabled' if not pagination.has_prev }}" href="{{ url_for(endpoint, **params) }}">‹</a>
+
+      {% for p in range(start_page, end_page + 1) %}
+        {% set _ = params.update({'page': p}) %}
+        <a class="page-link {{ 'active' if p == pagination.page }}" href="{{ url_for(endpoint, **params) }}">{{ p }}</a>
+      {% endfor %}
+
+      {% set _ = params.update({'page': pagination.next_num or pagination.page}) %}
+      <a class="page-link {{ 'disabled' if not pagination.has_next }}" href="{{ url_for(endpoint, **params) }}">›</a>
+
+      {% set _ = params.update({'page': pagination.pages}) %}
+      <a class="page-link {{ 'disabled' if not pagination.has_next }}" href="{{ url_for(endpoint, **params) }}">»</a>
+    </nav>
+  {% endif %}
+{% endmacro %}
