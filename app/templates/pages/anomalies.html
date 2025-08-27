@@ -1,25 +1,29 @@
 {% extends 'layout.html' %}
+{% from 'components/pagination.html' import pagination_nav %}
 {% block title %}Anomalias{% endblock %}
 {% block content %}
 <div class="container">
   <h1>Anomalias</h1>
-  <div class="mb-3">
-    <span>Filtrar por severidade:</span>
-    <select id="severityFilter" class="form-select w-auto d-inline">
-      <option value="">Todas</option>
-      <option value="low">Baixa</option>
-      <option value="medium">Média</option>
-      <option value="high">Alta</option>
+
+  <form method="get" action="{{ url_for('anomaly.list_anomalies') }}" class="search-form">
+    <select name="severity">
+      <option value="">Severidade</option>
+      <option value="low" {{ 'selected' if request.args.get('severity') == 'low' else '' }}>Baixa</option>
+      <option value="medium" {{ 'selected' if request.args.get('severity') == 'medium' else '' }}>Média</option>
+      <option value="high" {{ 'selected' if request.args.get('severity') == 'high' else '' }}>Alta</option>
     </select>
-    <span>Filtrar por estado:</span>
-    <select id="stateFilter" class="form-select w-auto d-inline">
-      <option value="">Todos</option>
-      <option value="resolved">Resolvidos</option>
-      <option value="unresolved">Pendentes</option>
+
+    <select name="state">
+      <option value="">Estado</option>
+      <option value="resolved" {{ 'selected' if request.args.get('state') == 'resolved' else '' }}>Resolvidos</option>
+      <option value="unresolved" {{ 'selected' if request.args.get('state') == 'unresolved' else '' }}>Pendentes</option>
     </select>
-  </div>
-  <span>Filtrar por data:</span>
-  <input type="date" id="dateFilter" class="form-control w-auto d-inline" />
+
+    <input type="date" name="date" value="{{ request.args.get('date','') }}">
+
+    <button type="submit"><i class="fa fa-search"></i></button>
+  </form>
+
   <div class="table-responsive" id="anomaliesTable">
     <table class="table-data">
       <thead>
@@ -34,7 +38,7 @@
       </thead>
       <tbody>
         {% for a in anomalies %}
-       <tr data-severity="{{ a.severity }}" data-state="{{ 'resolved' if a.resolved else 'unresolved' }}" data-date="{{ a.timestamp.strftime('%Y-%m-%d') }}">
+       <tr>
           <td>{{ a.timestamp.strftime('%Y‑%m‑%d %H:%M:%S') }}</td>
           <td>{{ a.source }}</td>
           <td class="descricao">{{ a.description }}</td>
@@ -89,51 +93,10 @@
         {% endfor %}
       </tbody>
     </table>
-    {% if pagination.pages > 1 %}
-          <nav class="pagination-nav" style="margin-top: 1rem; display:flex; gap:0.25rem;">
-            <!-- Primeira página -->
-            <a class="page-link {{ 'disabled' if not pagination.has_prev }}"
-              href="{{ url_for('anomaly.list_anomalies', page=1) }}">«</a>
-
-            <!-- Página anterior -->
-            <a class="page-link {{ 'disabled' if not pagination.has_prev }}"
-              href="{{ url_for('anomaly.list_anomalies', page=pagination.prev_num or 1) }}">‹</a>
-
-            <!-- Números de página -->
-            {% for p in range(start_page, end_page + 1) %}
-              <a class="page-link {{ 'active' if p == pagination.page }}"
-                href="{{ url_for('anomaly.list_anomalies', page=p) }}">{{ p }}</a>
-            {% endfor %}
-
-            <!-- Página seguinte -->
-            <a class="page-link {{ 'disabled' if not pagination.has_next }}"
-              href="{{ url_for('anomaly.list_anomalies', page=pagination.next_num or pagination.page) }}">›</a>
-
-            <!-- Última página -->
-            <a class="page-link {{ 'disabled' if not pagination.has_next }}"
-              href="{{ url_for('anomaly.list_anomalies', page=pagination.pages) }}">»</a>
-          </nav>
-          {% endif %}
+    {{ pagination_nav(pagination, 'anomaly.list_anomalies', start_page, end_page, args=args) }}
   </div>
 </div>
 <script>
-function applyFilters() {
-  var severityFilter = document.getElementById('severityFilter').value;
-  var stateFilter    = document.getElementById('stateFilter').value;
-  var dateFilter     = document.getElementById('dateFilter').value; // formato yyyy-mm-dd
-
-  document.querySelectorAll('#anomaliesTable tbody tr').forEach(function(row) {
-    var matchSeverity = !severityFilter || row.dataset.severity === severityFilter;
-    var matchState    = !stateFilter    || row.dataset.state === stateFilter;
-    var matchDate     = !dateFilter     || row.dataset.date === dateFilter;
-    row.style.display = (matchSeverity && matchState && matchDate) ? '' : 'none';
-  });
-}
-
-document.getElementById('severityFilter').addEventListener('change', applyFilters);
-document.getElementById('stateFilter').addEventListener('change', applyFilters);
-document.getElementById('dateFilter').addEventListener('change', applyFilters);
-
 function showAddToInvestigationModal(anomalyId) {
   // Fetch das investigações existentes
   fetch('/investigations/dropdown')
@@ -168,4 +131,49 @@ function showAddToInvestigationModal(anomalyId) {
     });
 }
 </script>
+
+<style>
+  .search-form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 20px;
+  padding: 12px;
+  border-radius: 8px;
+}
+
+.search-form input[type="text"],
+.search-form input[type="date"],
+.search-form select {
+  padding: 8px 12px;
+  border: 1px solid #ccc;
+  border-radius: 6px;
+  font-size: 14px;
+  flex: 1;
+  min-width: 180px;
+  max-width: 210px;
+  box-sizing: border-box;
+}
+
+.search-form input:focus,
+.search-form select:focus {
+  outline: none;
+  box-shadow: 0 0 4px rgba(37, 99, 235, 0.4);
+}
+
+.search-form button {
+  color: white;
+  border: none;
+  border-radius: 6px;
+  padding: 8px 14px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s ease;
+  border: 1px solid var(--color-border1);
+}
+
+.search-form button:hover {
+}
+</style>
 {% endblock %}

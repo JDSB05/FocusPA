@@ -1,4 +1,5 @@
 {% extends 'layout.html' %}
+{% from 'components/pagination.html' import pagination_nav %}
 {% block title %}Logs (Elastic){% endblock %}
 
 {% block content %}
@@ -56,38 +57,7 @@
     </table>
     </div>
 
-  {% set args = request.args.to_dict() %}
-{% set _ = args.pop('page', None) %}
-{% set _ = args.pop('per_page', None) %}
-
-{% set total_pages = (total // per_page) + (1 if total % per_page > 0 else 0) %}
-{% if total_pages > 1 %}
-<div class="pagination">
-
-  {% if page > 1 %}
-    {% set query = args.copy() %}
-    {% set _ = query.update({'page': page-1, 'per_page': per_page}) %}
-    <a href="{{ url_for('log.list_logs') }}?{{ query|urlencode }}">&laquo;</a>
-  {% endif %}
-
-  {% for p in range(1, total_pages + 1) %}
-    {% if p == page %}
-      <span>{{ p }}</span>
-    {% else %}
-      {% set query = args.copy() %}
-      {% set _ = query.update({'page': p, 'per_page': per_page}) %}
-      <a href="{{ url_for('log.list_logs') }}?{{ query|urlencode }}">{{ p }}</a>
-    {% endif %}
-  {% endfor %}
-
-  {% if page < total_pages %}
-    {% set query = args.copy() %}
-    {% set _ = query.update({'page': page+1, 'per_page': per_page}) %}
-    <a href="{{ url_for('log.list_logs') }}?{{ query|urlencode }}">&raquo;</a>
-  {% endif %}
-
-</div>
-{% endif %}
+  {{ pagination_nav(pagination, 'log.list_logs', start_page, end_page, args=args) }}
   {% endif %}
 
 <script>
@@ -137,17 +107,6 @@
   .search-form input {
     margin-right: 6px;
     margin-bottom: 6px;
-  }
-  .pagination {
-    margin-top: 18px;
-  }
-  .pagination a, .pagination span {
-    margin: 0 5px;
-    text-decoration: none;
-    color: inherit;
-  }
-  .pagination span {
-    font-weight: bold;
   }
   .mono {
     font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;

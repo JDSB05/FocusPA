@@ -8,6 +8,7 @@ from flask_login import current_user
 from app.services.elastic import es
 from ..extensions import db
 from ..model import Anomaly
+from ..utils.pagination import paginate
 
 
 def es_search_paginated(index="winlog-*", query=None, time_from=None, time_to=None, page_size=1000, page=1):
@@ -77,8 +78,9 @@ def list_logs():
 
     # Só executa query se houver filtros
     if not filters:
+        _, pagination, start_page, end_page, args = paginate([], page=page, per_page=per_page, total=0)
         return render_template(
-            "pages/logs.html", logs=[], total=0, page=page, per_page=per_page
+            "pages/logs.html", logs=[], pagination=pagination, start_page=start_page, end_page=end_page, args=args
         )
 
     query = {"bool": {"must": filters}}
@@ -90,12 +92,15 @@ def list_logs():
         page=page
     )
 
+    _, pagination, start_page, end_page, args = paginate(logs, page=page, per_page=per_page, total=total)
+
     return render_template(
         "pages/logs.html",
         logs=logs,
-        total=total,
-        page=page,
-        per_page=per_page
+        pagination=pagination,
+        start_page=start_page,
+        end_page=end_page,
+        args=args
     )
 
 
