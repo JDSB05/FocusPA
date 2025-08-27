@@ -3,11 +3,11 @@ import flask
 
 from ..extensions import db
 from ..model import Anomaly, Investigation
+from ..utils.pagination import paginate
 
 
 def list_anomalies():
-    page = request.args.get('page', 1, type=int)
-    per_page = 20  # nº de registos por página
+    """Lista anomalias com paginação automática."""
 
     # Filtro por campo booleano "investigacao" (true/false)
     investigacao_param = request.args.get('investigacao')
@@ -27,17 +27,15 @@ def list_anomalies():
         else:
             query = query.filter(~exists_q)
 
-    pagination = query.order_by(Anomaly.timestamp.desc()) \
-                      .paginate(page=page, per_page=per_page, error_out=False)
+    items, pagination, start_page, end_page = paginate(
+        query.order_by(Anomaly.timestamp.desc()), per_page=20
+    )
 
     # Garante que cada anomalia tem o atributo .investigacao como True/False
     anomalies = []
-    for a in pagination.items:
+    for a in items:
         a.investigacao = bool(a.investigations)   # True se tiver investigações, False se não
         anomalies.append(a)
-
-    start_page = max(1, pagination.page - 2)
-    end_page   = min(pagination.pages, pagination.page + 2)
 
     return render_template(
         'pages/anomalies.html',

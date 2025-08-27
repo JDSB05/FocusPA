@@ -2,6 +2,7 @@ from flask import jsonify, request, render_template, send_file, redirect, url_fo
 from io import BytesIO
 from flask_login import current_user
 from ..model import Anomaly, Investigation, File, db, Note
+from ..utils.pagination import paginate
 
 def investigation_dropdown():
     investigations = Investigation.query.filter_by(state='open').all()
@@ -37,18 +38,15 @@ def complete_investigation(id):
     return jsonify({"message": "Investigação concluída com sucesso"})
 
 def list_investigations():
-    page = request.args.get('page', 1, type=int)
-    per_page = 20  # nº de registos por página
+    """Lista investigações utilizando paginação reutilizável."""
 
-    pagination = Investigation.query.order_by(Investigation.created_at.desc()) \
-                                    .paginate(page=page, per_page=per_page, error_out=False)
-
-    start_page = max(1, pagination.page - 2)
-    end_page   = min(pagination.pages, pagination.page + 2)
+    items, pagination, start_page, end_page = paginate(
+        Investigation.query.order_by(Investigation.created_at.desc()), per_page=20
+    )
 
     return render_template(
         'pages/investigations.html',
-        investigations=pagination.items,
+        investigations=items,
         pagination=pagination,
         start_page=start_page,
         end_page=end_page
