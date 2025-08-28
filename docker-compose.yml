@@ -48,9 +48,9 @@ services:
       - pgdata:/var/lib/postgresql/data
     restart: always
 
-  deepseek:
+  ollama:
     image: ollama/ollama:latest
-    container_name: deepseek
+    container_name: ollama
     environment:
       - OLLAMA_FORCE_CPU=${OLLAMA_FORCE_CPU}
     # GPU config opcional (só funciona se Docker tiver suporte)

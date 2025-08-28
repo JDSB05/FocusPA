@@ -21,6 +21,7 @@ EMBED_MODEL = os.environ.get(
 )
 LLM_URL = os.environ.get("LLM_URL", "http://localhost:11434")
 LLM_MODEL = os.environ.get("LLM_MODEL", "deepseek-r1")
+LLM_MODEL_LIGHT = os.environ.get("LLM_MODEL_LIGHT", "deepseek-coder-v2")
 
 ollama = Client(
   host=LLM_URL,
@@ -196,6 +197,7 @@ def ask_llm_stream(
             model=model,
             messages=msgs,
             stream=True,
+            think=False
         )
 
         for chunk in stream:
@@ -208,6 +210,7 @@ def ask_llm_stream(
                 break
 
     except Exception as e:
+        print(f"[ERROR] ask_llm_stream: {e}")   
         yield f"\n❌ Erro ao contactar o LLM: {e}\n"
 
 # ===== Reformulação =====
@@ -240,7 +243,7 @@ Pergunta original:
 Resposta (apenas JSON ou null):
 """
     try:
-        text = ask_llm(prompt, "deepseek-coder-v2").strip()
+        text = ask_llm(prompt, LLM_MODEL_LIGHT).strip()
         text = strip_json_markdown(text)
 
         if text.lower() == "null":
