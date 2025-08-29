@@ -4,6 +4,7 @@ from datetime import datetime, timedelta
 
 from ..extensions import db
 from ..model import Anomaly, Investigation
+from ..services.policy_linker import link_anomaly_to_policy_chunks
 from ..utils.pagination import paginate
 
 
@@ -32,9 +33,9 @@ def list_anomalies():
 
     state = request.args.get('state')
     if state == 'resolved':
-        query = query.filter(Anomaly.resolved.is_(True))
+        query = query.filter_by(resolved=True)
     elif state == 'unresolved':
-        query = query.filter(Anomaly.resolved.is_(False))
+        query = query.filter_by(resolved=False)
 
     date_str = request.args.get('date')
     if date_str:
@@ -88,6 +89,13 @@ def create_anomaly():
     )
     db.session.add(anomaly)
     db.session.commit()
+    flash("Anomalia criada com sucesso", "Sucesso")
+
+    # Link to policies via Chroma top match
+    try:
+        link_anomaly_to_policy_chunks(anomaly, top_k=1)
+    except Exception as _e:
+        print(f"[WARN] Could not link anomaly to policy chunks: {_e}")
     return jsonify({'id': anomaly.id}), 201
 
 
@@ -100,6 +108,7 @@ def update_anomaly(anomaly_id: int):
     if data.get('resolved'):
         anomaly.mark_resolved()
     db.session.commit()
+    flash("Anomalia atualizada com sucesso", "Sucesso")
     return jsonify({'message': 'updated'})
 
 
@@ -107,6 +116,7 @@ def delete_anomaly(anomaly_id: int):
     anomaly = Anomaly.query.get_or_404(anomaly_id)
     db.session.delete(anomaly)
     db.session.commit()
+    flash("Anomalia eliminada", "Sucesso")
     return jsonify({'message': 'deleted'})
 
 def resolve_anomaly(anomaly_id: int):
@@ -116,4 +126,5 @@ def resolve_anomaly(anomaly_id: int):
         return jsonify({'message': 'anomaly already resolved'}), 400
     anomaly.mark_resolved()
     db.session.commit()
+    flash("Anomalia marcada como resolvida", "Sucesso")
     return jsonify({'message': 'resolved'})

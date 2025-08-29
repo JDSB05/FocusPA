@@ -116,35 +116,98 @@
   <!-- Toastify Flash messages -->
   <script src="https://cdn.jsdelivr.net/npm/toastify-js"></script>
   <script>
+    // Helper to show a toast in a consistent style
+    function showFlashToast(category, message) {
+      const c = (category || '').toString().toLowerCase();
+      let bg;
+      switch (c) {
+        case 'erro':
+        case 'error':
+          bg = "#e74c3c"; break;
+        case 'sucesso':
+        case 'success':
+          bg = "#2ecc71"; break;
+        case 'aviso':
+        case 'warning':
+          bg = "#f39c12"; break;
+        default:
+          bg = "#3498db";
+      }
+      Toastify({
+        text: message,
+        duration: 5000,
+        gravity: "top",
+        position: "right",
+        style: { fontSize: "25px", padding: "20px 30px", fontFamily: "Tahoma" },
+        backgroundColor: bg,
+        stopOnFocus: true
+      }).showToast();
+    }
+
+    // Helpers to persist flashes across reloads
+    const FLASH_KEY = 'pending_flashes';
+    function readPendingFlashes() {
+      try { return JSON.parse(sessionStorage.getItem(FLASH_KEY) || '[]'); } catch { return []; }
+    }
+    function writePendingFlashes(list) {
+      try { sessionStorage.setItem(FLASH_KEY, JSON.stringify(list || [])); } catch {}
+    }
+
+    // Render flashes included in the initial HTML (hidden list)
     document.addEventListener('DOMContentLoaded', function () {
+      const navEntries = performance.getEntriesByType && performance.getEntriesByType('navigation');
+      const navType = (navEntries && navEntries[0] && navEntries[0].type) || (performance.navigation && performance.navigation.type === 1 ? 'reload' : 'navigate');
+
+      // If this load is a reload, replay any stored flashes
+      if (navType === 'reload') {
+        const stored = readPendingFlashes();
+        if (Array.isArray(stored) && stored.length) {
+          stored.forEach(({category, message}) => { if (message) showFlashToast(category, message); });
+          writePendingFlashes([]);
+        }
+      } else {
+        // On normal navigation, clear any stale stored flashes
+        writePendingFlashes([]);
+      }
+
       const flashList = document.getElementById('flash-list');
       if (flashList) {
         flashList.querySelectorAll('li').forEach(li => {
           const category = li.dataset.category;
           const message = li.textContent.trim();
-          let bg;
-          switch (category) {
-            case 'Erro':     bg = "#e74c3c"; break;
-            case 'Sucesso':  bg = "#2ecc71"; break;
-            case 'Aviso':    bg = "#f39c12"; break;
-            default:         bg = "#3498db";
-          }
-          Toastify({
-            text: message,
-            duration: 5000,
-            gravity: "top",
-            position: "right",
-            style: {
-              fontSize: "25px",
-              padding: "20px 30px",
-              fontFamily: "Tahoma"
-            },
-            backgroundColor: bg,
-            stopOnFocus: true
-          }).showToast();
+          if (message) showFlashToast(category, message);
         });
       }
     });
+
+    // Globally wrap fetch to pull flashes after any API response
+    (function(){
+      const origFetch = window.fetch.bind(window);
+      window.fetch = async function(...args) {
+        const res = await origFetch(...args);
+        try {
+          const fr = await origFetch('/flashes', { headers: { 'X-Requested-With': 'XMLHttpRequest' } });
+          if (fr.ok) {
+            const data = await fr.json();
+            if (Array.isArray(data) && data.length) {
+              // Persist for potential replay after reload
+              const pending = readPendingFlashes();
+              data.forEach(arr => {
+                const category = Array.isArray(arr) ? arr[0] : (arr && arr.category);
+                const message  = Array.isArray(arr) ? arr[1] : (arr && arr.message);
+                if (message) {
+                  pending.push({ category: category || 'Info', message });
+                  // Show immediately as well
+                  showFlashToast(category || 'Info', message);
+                }
+              });
+              writePendingFlashes(pending);
+            }
+          }
+        } catch (e) { /* ignore */ }
+        return res;
+      }
+    })();
   </script>
   <script src="/static/js/script.js"></script>
   <script>

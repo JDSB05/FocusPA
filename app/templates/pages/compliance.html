@@ -20,31 +20,50 @@
 
 {% block content %}
 <h2>Conformidade</h2>
-<p>Monitorização de normas e regulamentações.</p>
-<div class="table-responsive">
-<table class="table-data">
-  <thead>
-    <tr>
-      <th>Política</th>
-      <th>Data de criação</th>
-      <th>Conformidade (%)</th>
-    </tr>
-  </thead>
-  <tbody>
-    {% for policy in policies %}
-    <tr>
-      <td>{{ policy.name }}</td>
-      <td>{{ policy.created_at.strftime('%Y-%m-%d %H:%M:%S') }}</td>
-      <td>
-        <div class="progress-container">
-          <div class="progress-bar" style="width: {{ compliance_rate }}%; background-color: #007bff;">
-            {{ compliance_rate }}%
+<p>Monitorização de conformidade por política (percentagem de anomalias resolvidas).</p>
+
+<div class="table-card" style="border: 1px solid rgb(255, 255, 255);">
+  <h3>Taxa global: </h3>
+  <div class="progress-container">
+    <div class="progress-bar" style="width: {{ global_rate }}%; background-color: #1f9d55;">
+      {{ global_rate }}%
+    </div>
+  </div>
+  <p style="margin-top:6px;">Percentagem baseada em anomalias associadas a políticas; se não existirem associações, usa todas as anomalias.</p>
+  </div>
+
+<div class="table-responsive" style="margin-top:16px;">
+  <table class="table-data">
+    <thead>
+      <tr>
+        <th>Política</th>
+        <th>Criada em</th>
+        <th>Anomalias</th>
+        <th>Resolvidas</th>
+        <th>Conformidade (%)</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in per_policy %}
+      <tr>
+        <td>{{ row.policy.name }}</td>
+        <td>{{ row.policy.created_at.strftime('%Y-%m-%d %H:%M:%S') }}</td>
+        <td>{{ row.total }}</td>
+        <td>{{ row.resolved }}</td>
+        <td>
+          <div class="progress-container">
+            <div class="progress-bar" style="width: {{ row.rate }}%; background-color: #007bff;">
+              {{ row.rate }}%
+            </div>
           </div>
-        </div>
-      </td>
-    </tr>
-    {% endfor %}
-  </tbody>
-</table>
-</div>
+        </td>
+      </tr>
+      {% else %}
+      <tr>
+        <td colspan="5">Sem políticas registadas.</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
 {% endblock %}

@@ -1,11 +1,13 @@
 # app/__init__.py
 
 from datetime import timedelta, datetime
+import os
 from flask import Flask, jsonify, redirect, request, session, url_for
 from flask_login import current_user
 from apscheduler.schedulers.background import BackgroundScheduler
 
 from app.controllers.rag_controller import ask_llm, ask_llm_stream, delete_think_stream
+from app.utils.others import ensure_model
 from .services.anomaly_service import detect_and_create_anomalies
 from .services.elastic import create_fake_winlogs
 from .config import Config
@@ -23,6 +25,9 @@ from .routes import (
 )
 from .model import Anomaly, User, create_test_anomalies, create_investigation
 
+
+LLM_MODEL = os.getenv("LLM_MODEL", "deepseek-r1")
+LLM_MODEL_LIGHT = os.getenv("LLM_MODEL_LIGHT", "deepseek-coder-v2")
 
 def create_app(config_class: type = Config) -> Flask:
     """Application factory."""
@@ -69,7 +74,8 @@ def create_app(config_class: type = Config) -> Flask:
     with app.app_context():
         db.create_all()
         #create_test_anomalies()
-
+        ensure_model(LLM_MODEL)
+        ensure_model(LLM_MODEL_LIGHT)
         # Garante que existe um utilizador admin
         user = User.query.get(1)
         if not user:

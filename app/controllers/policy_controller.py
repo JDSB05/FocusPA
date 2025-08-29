@@ -208,6 +208,7 @@ def upload_policy():
         print(f"[DEBUG] [Chroma] Uploading policy: name={name}, file={file}")
 
         if not file or not name or file.filename is None:
+            flash('Nome e ficheiro são obrigatórios', 'Erro')
             return jsonify({'error': 'Nome e ficheiro são obrigatórios'}), 400
 
         filename = secure_filename(file.filename)
@@ -218,6 +219,7 @@ def upload_policy():
             content = extract_text_from_file(filepath)
 
             if not content or not content.strip():
+                flash('O ficheiro não contém texto extraível.', 'Erro')
                 return jsonify({'error': 'O ficheiro não contém texto extraível.'}), 400
 
             stat = os.stat(filepath)
@@ -231,12 +233,15 @@ def upload_policy():
 
             delete_policy(name)
             add_policy(name=name, content=content, base_meta=base_meta)
+            flash('Política carregada com sucesso (ficheiro)', 'Sucesso')
             return jsonify({'result': 'Policy uploaded successfully via file'}), 201
         except Exception as e:
+            flash(f'Erro ao processar ficheiro: {e}', 'Erro')
             return jsonify({'error': f'Failed to process file: {e}'}), 500
     else:
         policy_data = request.get_json()
         if not policy_data:
+            flash('JSON inválido ou em falta', 'Erro')
             return jsonify({'error': 'Invalid or missing JSON in request'}), 400
 
         name = policy_data.get('name')
@@ -244,10 +249,13 @@ def upload_policy():
 
         try:
             if not content or not str(content).strip():
+                flash('Conteúdo vazio.', 'Erro')
                 return jsonify({'error': 'Conteúdo vazio.'}), 400
 
             delete_policy(name)
             add_policy(name=name, content=content)
+            flash('Política carregada com sucesso', 'Sucesso')
             return jsonify({'result': 'Policy uploaded successfully'}), 201
         except Exception as e:
+            flash(f'Erro ao carregar política: {e}', 'Erro')
             return jsonify({'error': f'Failed to upload policy: {e}'}), 500

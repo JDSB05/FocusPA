@@ -62,7 +62,7 @@
         <td>{{ a.timestamp.strftime('%Y-%m-%d %H:%M:%S') }}</td>
         <td>{{ a.source }}</td>
         <td class="descricao">{{ a.description }}</td>
-        <td>{{ a.severity }}</td>
+        <td>{% if a.severity == 'high' %}<span class="badge high">Alta</span>{% elif a.severity == 'medium' %}<span class="badge medium">Média</span>{% else %}<span class="badge low">Baixa</span>{% endif %}</td>
       </tr>
       {% endfor %}
     </tbody>

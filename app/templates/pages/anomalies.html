@@ -42,7 +42,7 @@
           <td>{{ a.timestamp.strftime('%Y‑%m‑%d %H:%M:%S') }}</td>
           <td>{{ a.source }}</td>
           <td class="descricao">{{ a.description }}</td>
-          <td>{{ a.severity }}</td>
+          <td>{% if a.severity == 'high' %}<span class="badge high">Alta</span>{% elif a.severity == 'medium' %}<span class="badge medium">Média</span>{% else %}<span class="badge low">Baixa</span>{% endif %}</td>
           <td>
             {{ (
               '<span style="background-color: rgba(128, 128, 128, 0.486); border-radius: 5px; padding: 5px">'
@@ -71,9 +71,8 @@
                     body: '<p>{% if a.investigacao %}A anomalia já tem investigação associada, deseja continuar?{% else %}Queres iniciar uma investigação com base nesta anomalia?{% endif %}</p>',
                     actions: [
                     { label: 'Iniciar', onClick: () => {
-                      console.log({{ a.investigacao }});
                       fetch(`/investigations/start/{{ a.id }}`, { method: 'POST' })
-                        .then(() => console.log('Investigação iniciada'));
+                        .then(() => location.reload());
                       }},
                     { label: 'Cancelar', onClick: () => {} },
                     ]
@@ -81,14 +80,14 @@
               Iniciar investigação <i class="fas fa-play"></i>
             </button>
 
-            <button class="table-button" onclick="showAddToInvestigationModal({{ a.id }})">
-              Adicionar a investigação <i class="fas fa-plus"></i>
+            <button class="table-button" onclick="showEditSeverityModal({{ a.id }}, '{{ a.severity }}')">
+              Editar severidade <i class="fas fa-edit"></i>
             </button>
           </td>
         </tr>
         {% else %}
         <tr>
-          <td colspan="5">Nenhuma anomalia registada.</td>
+          <td colspan="6">Nenhuma anomalia registada.</td>
         </tr>
         {% endfor %}
       </tbody>
@@ -130,50 +129,47 @@ function showAddToInvestigationModal(anomalyId) {
       });
     });
 }
+function showEditSeverityModal(anomalyId, currentSeverity) {
+  const options = `
+    <option value="low" ${currentSeverity === "low" ? "selected" : ""}>Baixa</option>
+    <option value="medium" ${currentSeverity === "medium" ? "selected" : ""}>Média</option>
+    <option value="high" ${currentSeverity === "high" ? "selected" : ""}>Alta</option>
+  `;
+
+  showModal({
+    title: 'Editar Severidade',
+    body: `
+      <p>Escolhe a nova severidade para esta anomalia:</p>
+      <select id="severitySelect" class="form-select w-100">
+        ${options}
+      </select>
+    `,
+    actions: [
+      { 
+        label: 'Salvar', 
+        onClick: () => {
+          const selectedSeverity = document.getElementById('severitySelect').value;
+          fetch(`/anomalies/${anomalyId}`, {
+            method: 'PUT',
+            headers: {
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ severity: selectedSeverity })
+          })
+          .then(res => {
+            if (!res.ok) throw new Error('Falhou a atualização');
+            if (!res.ok) console.log(res);
+            location.reload();
+          });
+        }
+      },
+      { label: 'Cancelar', onClick: () => {} }
+    ]
+  });
+}
 </script>
 
 <style>
-  .search-form {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-  margin-bottom: 20px;
-  padding: 12px;
-  border-radius: 8px;
-}
-
-.search-form input[type="text"],
-.search-form input[type="date"],
-.search-form select {
-  padding: 8px 12px;
-  border: 1px solid #ccc;
-  border-radius: 6px;
-  font-size: 14px;
-  flex: 1;
-  min-width: 180px;
-  max-width: 210px;
-  box-sizing: border-box;
-}
-
-.search-form input:focus,
-.search-form select:focus {
-  outline: none;
-  box-shadow: 0 0 4px rgba(37, 99, 235, 0.4);
-}
-
-.search-form button {
-  color: white;
-  border: none;
-  border-radius: 6px;
-  padding: 8px 14px;
-  font-size: 14px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: background 0.2s ease;
-  border: 1px solid var(--color-border1);
-}
-
-.search-form button:hover {
-}
+/* estilos específicos desta página (se necessário) */
 </style>
 {% endblock %}

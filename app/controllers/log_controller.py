@@ -8,6 +8,7 @@ from flask_login import current_user
 from app.services.elastic import es
 from ..extensions import db
 from ..model import Anomaly
+from ..services.policy_linker import link_anomaly_to_policy_chunks
 from ..utils.pagination import paginate
 
 
@@ -132,9 +133,16 @@ def create_anomaly_from_log():
             log_id=doc_id,
         )
         db.session.add(anomaly)
-        db.session.commit()
+        db.session.commit()  # ensure anomaly.id exists
 
-        flash("Anomalia criada manualmente a partir de log do ES.", "success")
+        # Link anomaly to most relevant policy chunk(s)
+        try:
+            link_anomaly_to_policy_chunks(anomaly, top_k=1)
+        except Exception as _e:
+            # Non-fatal
+            print(f"[WARN] Could not link anomaly to policy chunks: {_e}")
+
+        flash("Anomalia criada manualmente a partir de log do ES.", "Sucesso")
         return jsonify({"ok": True, "log": src})
     except Exception as e:
         print(f"Erro ao criar anomalia a partir do log ES: {e}")

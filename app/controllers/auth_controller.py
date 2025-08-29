@@ -17,6 +17,7 @@ def login():
             log = AccessLog(user_id=user.id, action='login', ip_address=get_client_ip(), meta_info={"user_agent": request.user_agent.string})
             db.session.add(log)
             db.session.commit()
+            flash('Sessão iniciada com sucesso.', 'Sucesso')
             return redirect(url_for('main.dashboard'))
         flash('Credenciais inválidas.', 'Erro')
     return render_template('pages/login.html')
