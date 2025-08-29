@@ -91,7 +91,7 @@
       }
     });
 
-  // Anomalias por dia
+  // Anomalias por dia (linha)
   createChart(document.getElementById('anomalyChart').getContext('2d'), 'line', {
     labels: labels,
     datasets: [{
@@ -102,35 +102,55 @@
       backgroundColor: 'rgba(75, 192, 192, 0.2)',
       borderColor: 'rgba(75, 192, 192, 1)'
     }]
+  }, {
+    scales: {
+      y: {
+        ticks: {
+          callback: value => Number.isInteger(value) ? value : null
+        }
+      }
+    }
   });
 
-  // Anomalias por severidade
+  // Anomalias por severidade (barras)
   createChart(document.getElementById('severityChart').getContext('2d'), 'bar', {
     labels: Object.keys(severityCounts),
     datasets: [{
       label: 'Contagem',
       data: Object.values(severityCounts),
       backgroundColor: ['#FFD700', '#FFA500', '#FF4500']
-    }],
-    options: {
+    }]
+  }, {
     responsive: true,
     maintainAspectRatio: false,
-    aspectRatio: 1
-  }
+    aspectRatio: 1,
+    scales: {
+      y: {
+        ticks: {
+          callback: value => Number.isInteger(value) ? value : null
+        }
+      }
+    }
   });
 
-  // Resolvidas vs Pendentes
+  // Resolvidas vs Pendentes (donut)
   createChart(document.getElementById('statusChart').getContext('2d'), 'doughnut', {
     labels: Object.keys(statusCounts),
     datasets: [{
       data: Object.values(statusCounts),
       backgroundColor: ['#00C49A', '#FF6A6A']
-    }],
-    options: {
+    }]
+  }, {
     responsive: true,
     maintainAspectRatio: false,
-    aspectRatio: 1
-  }
+    aspectRatio: 1,
+    plugins: {
+      tooltip: {
+        callbacks: {
+          label: ctx => ctx.label + ': ' + Math.round(ctx.parsed)
+        }
+      }
+    }
   });
 
   // Gauge de Conformidade
@@ -140,17 +160,22 @@
       data: [complianceRate, 100 - complianceRate],
       backgroundColor: ['#00BFFF', '#f0f0f0'],
       borderWidth: 0
-    }],
-    options: {
+    }]
+  }, {
     responsive: true,
     maintainAspectRatio: false,
-    aspectRatio: 1
-  }
-  }, {
+    aspectRatio: 1,
     circumference: 180,
     rotation: 270,
     cutout: '70%',
-    plugins: { legend: { display: false } }
+    plugins: { 
+      legend: { display: false },
+      tooltip: {
+        callbacks: {
+          label: ctx => ctx.label + ': ' + Math.round(ctx.parsed)
+        }
+      }
+    }
   });
 </script>
 {% endblock %}
