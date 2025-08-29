@@ -96,6 +96,58 @@ button:hover {
     background: var(--color-button-hover);
 }
 
+/* Global form + input styles */
+.search-form {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-bottom: 20px;
+    padding: 12px;
+    border-radius: 8px;
+}
+
+input[type="text"],
+input[type="password"],
+input[type="email"],
+input[type="date"],
+input[type="datetime-local"],
+select,
+textarea {
+    background: var(--color-white);
+    border: 1px solid var(--color-user-message-border);
+    border-radius: 6px;
+    color: var(--color-black);
+    padding: 8px 12px;
+    font-size: 14px;
+    box-sizing: border-box;
+}
+
+input::placeholder,
+textarea::placeholder {
+    color: var(--color-groupings);
+}
+
+input:focus,
+select:focus,
+textarea:focus {
+    outline: none;
+    box-shadow: 0 0 4px rgba(37, 99, 235, 0.4);
+}
+
+/* Inputs inside search bars */
+.search-form input[type="text"],
+.search-form input[type="date"],
+.search-form input[type="datetime-local"],
+.search-form select {
+    flex: 1;
+    min-width: 180px;
+    max-width: 210px;
+}
+
+.search-form button {
+    border: 1px solid var(--color-border1);
+}
+
 .sidebar-controls {
     display: flex;
     gap: 10px;

@@ -1,4 +1,4 @@
-from flask import jsonify, request, render_template, send_file, redirect, url_for
+from flask import jsonify, request, render_template, send_file, redirect, url_for, flash
 from io import BytesIO
 from flask_login import current_user
 from datetime import datetime, timedelta
@@ -24,18 +24,19 @@ def start_investigation(anomaly_id):
     
     db.session.add(inv)
     db.session.commit()
-    
+    flash("Investigação criada", "Sucesso")
     return jsonify({"message": "Investigação criada", "investigation_id": inv.id}), 201
 
 def complete_investigation(id):
     investigation = Investigation.query.get_or_404(id)
 
     if investigation.state == "closed":
+        flash("Investigação já se encontra concluída", "Aviso")
         return jsonify({"message": "Investigação já se encontra concluída"}), 400
 
     investigation.state = "closed"
     db.session.commit()
-
+    flash("Investigação concluída com sucesso", "Sucesso")
     return jsonify({"message": "Investigação concluída com sucesso"})
 
 def list_investigations():
@@ -80,6 +81,7 @@ def add_anomaly(inv_id, anomaly_id):
     if anomaly and investigation:
         investigation.anomalies.append(anomaly)  # assumindo relacionamento many-to-many
         db.session.commit()
+        flash("Anomalia adicionada à investigação", "Sucesso")
         return '', 204
     return 'Anomalia ou Investigação não encontrada', 404
 
@@ -89,6 +91,7 @@ def remove_anomaly(inv_id, anomaly_id):
     if anomaly in investigation.anomalies:
         investigation.anomalies.remove(anomaly)
         db.session.commit()
+        flash("Anomalia removida da investigação", "Sucesso")
     return redirect(url_for('investigation.detail', id=inv_id))
 
 def upload_file(inv_id):
@@ -101,12 +104,14 @@ def upload_file(inv_id):
     )
     db.session.add(file)
     db.session.commit()
+    flash("Ficheiro carregado", "Sucesso")
     return redirect(url_for('investigation.detail', id=inv_id))
 
 def delete_file(inv_id, file_id):
     file = File.query.get_or_404(file_id)
     db.session.delete(file)
     db.session.commit()
+    flash("Ficheiro eliminado", "Sucesso")
     return redirect(url_for('investigation.detail', id=inv_id))
 
 def download_file(inv_id, file_id):
@@ -124,10 +129,14 @@ def add_note(inv_id):
         note = Note(content=content, investigation_id=inv_id)
         db.session.add(note)
         db.session.commit()
+        flash("Nota adicionada", "Sucesso")
+    else:
+        flash("Conteúdo da nota em falta", "Aviso")
     return redirect(url_for('investigation.detail', id=inv_id))
 
 def delete_note(inv_id, note_id):
     note = Note.query.get_or_404(note_id)
     db.session.delete(note)
     db.session.commit()
+    flash("Nota eliminada", "Sucesso")
     return redirect(url_for('investigation.detail', id=inv_id))

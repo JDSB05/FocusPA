@@ -5,9 +5,6 @@
 
 {% block content %}
 <h2>Controlo de Acesso</h2>
-{% if logs|length == 0 %}
-<p>Nenhum registo de acesso disponível.</p>
-{% else %}
 <form method="get" action="{{ url_for('main.access_control') }}" class="search-form">
   <input type="text" id="search" name="q" placeholder="Pesquisar..." value="{{ request.args.get('q','') }}">
   <button type="submit"><i class="fa fa-search"></i></button>
@@ -32,6 +29,10 @@
         <td>{{ log.ip_address or '-' }}</td>
         <td>{{ log.timestamp.strftime('%Y-%m-%d %H:%M:%S') }}</td>
       </tr>
+      {% else %}
+      <tr>
+        <td colspan="5">Nenhum registo de acesso encontrado.</td>
+      </tr>
       {% endfor %}
     </tbody>
   </table>
@@ -46,7 +47,6 @@
     <canvas id="dailyChart"></canvas>
   </div>
 </div>
-{% endif %}
 {% endblock %}
 
 {% block scripts %}
@@ -97,80 +97,6 @@
   });
 </script>
 <style>
-  .search-input {
-    margin-bottom: 10px;
-    padding: 5px;
-    width: 300px;
-  }
-
-
-
-  .search-form {
-    margin-bottom: 15px;
-  }
-
-  .search-form input {
-    margin-right: 6px;
-    margin-bottom: 6px;
-  }
-
-  .mono {
-    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
-    font-size: 14px;
-    white-space: pre-wrap;
-  }
-
-  .search-form {
-    display: flex;
-    flex-wrap: wrap;
-    /* inputs quebram linha se não couberem */
-    gap: 10px;
-    /* espaçamento entre inputs */
-    margin-bottom: 20px;
-    padding: 12px;
-    border-radius: 8px;
-  }
-
-  /* Inputs */
-  .search-form input[type="text"],
-  .search-form input[type="datetime-local"] {
-    padding: 8px 12px;
-    border: 1px solid #ccc;
-    border-radius: 6px;
-    font-size: 14px;
-    flex: 1;
-    /* ocupa espaço disponível */
-    min-width: 180px;
-    /* largura mínima */
-    max-width: 210px;
-    box-sizing: border-box;
-  }
-
-  .search-form input:focus {
-    outline: none;
-    box-shadow: 0 0 4px rgba(37, 99, 235, 0.4);
-  }
-
-  /* Labels inline */
-  .search-form label {
-    align-self: center;
-    font-weight: 500;
-    margin-right: 4px;
-  }
-
-  /* Botão Pesquisar */
-  .search-form button {
-    color: white;
-    border: none;
-    border-radius: 6px;
-    padding: 8px 14px;
-    font-size: 14px;
-    font-weight: 600;
-    cursor: pointer;
-    transition: background 0.2s ease;
-    border: 1px solid var(--color-border1);
-  }
-
-  .search-form button:hover {}
+/* estilos específicos desta página (se necessário) */
 </style>
 {% endblock %}

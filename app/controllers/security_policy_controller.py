@@ -1,5 +1,5 @@
 # app/controllers/security_policy_controller.py
-from flask import jsonify, request, render_template
+from flask import jsonify, request, render_template, flash
 from http import HTTPStatus
 
 from ..utils.policy import load_policy, save_policy
@@ -16,6 +16,7 @@ def replace_policy():
     """PUT /security_policy/ — substitui a policy inteira"""
     data = request.get_json(silent=True, force=True)
     if not isinstance(data, dict):
+        flash("JSON inválido ao atualizar política de segurança", "Erro")
         return jsonify({"error": "JSON inválido."}), HTTPStatus.BAD_REQUEST
     try:
         saved = save_policy({
@@ -23,6 +24,8 @@ def replace_policy():
             "dirs": data.get("dirs", []),
             "custom_prompt": data.get("custom_prompt", ""),
         })
+        flash("Política de segurança atualizada", "Sucesso")
         return jsonify(saved)
     except ValueError as e:
+        flash(str(e), "Erro")
         return jsonify({"error": str(e)}), HTTPStatus.BAD_REQUEST

@@ -72,6 +72,22 @@ class Anomaly(db.Model):
     def __repr__(self):
         return f"<Anomaly {self.id} sev={self.severity}>"
 
+class AnomalyPolicyLink(db.Model):
+    __tablename__ = "anomaly_policy_links"
+    id = db.Column(db.Integer, primary_key=True)
+    anomaly_id = db.Column(db.Integer, db.ForeignKey("anomalies.id"), nullable=False, index=True)
+    policy_name = db.Column(db.String(150), nullable=False, index=True)
+    chunk_id = db.Column(db.String(255), nullable=True, index=True)
+    chunk_index = db.Column(db.Integer, nullable=True)
+    distance = db.Column(db.Float, nullable=True)  # distância do vector (menor é melhor)
+    created_at = db.Column(db.DateTime, default=datetime.now, index=True)
+
+    anomaly = db.relationship("Anomaly", backref=db.backref("policy_links", lazy="dynamic", cascade="all, delete-orphan"))
+
+    __table_args__ = (
+        db.UniqueConstraint('anomaly_id', 'chunk_id', name='uq_anomaly_chunk'),
+    )
+
 class Investigation(db.Model):
     __tablename__ = "investigations"
     id = db.Column(db.Integer, primary_key=True)

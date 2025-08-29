@@ -1,8 +1,8 @@
 from datetime import datetime, timedelta
 from typing import Counter
-from flask import render_template, request, jsonify
+from flask import render_template, request, jsonify, get_flashed_messages
 from ..extensions import db
-from ..model import Anomaly, AccessLog, Policy
+from ..model import Anomaly, AccessLog, Policy, AnomalyPolicyLink
 from sqlalchemy.orm import joinedload
 
 
@@ -76,14 +76,55 @@ def access_control():
                            daily_counts=daily_counts)
 
 def compliance():
-    total = Anomaly.query.count()
-    resolved_count = Anomaly.query.filter_by(resolved=True).count()
-    compliance_rate = round((resolved_count / total) * 100, 2) if total else 0
-
     policies = Policy.query.order_by(Policy.name).all()
+
+    # Compute per-policy totals using links
+    per_policy = []
+    for p in policies:
+        # All anomalies linked to this policy
+        total = (db.session.query(Anomaly)
+                 .join(AnomalyPolicyLink, AnomalyPolicyLink.anomaly_id == Anomaly.id)
+                 .filter(AnomalyPolicyLink.policy_name == p.name)
+                 .count())
+
+        resolved = (db.session.query(Anomaly)
+                    .join(AnomalyPolicyLink, AnomalyPolicyLink.anomaly_id == Anomaly.id)
+                    .filter(AnomalyPolicyLink.policy_name == p.name, Anomaly.resolved.is_(True))
+                    .count())
+
+        rate = round((resolved / total) * 100, 2) if total else 100.0
+        per_policy.append({
+            'policy': p,
+            'total': total,
+            'resolved': resolved,
+            'rate': rate,
+        })
+
+    # Global rate on linked anomalies (fallback to all anomalies if none linked yet)
+    linked_total = db.session.query(AnomalyPolicyLink).count()
+    if linked_total:
+        total_anoms = (db.session.query(Anomaly)
+                       .join(AnomalyPolicyLink, AnomalyPolicyLink.anomaly_id == Anomaly.id)
+                       .count())
+        resolved_anoms = (db.session.query(Anomaly)
+                          .join(AnomalyPolicyLink, AnomalyPolicyLink.anomaly_id == Anomaly.id)
+                          .filter(Anomaly.resolved.is_(True))
+                          .count())
+    else:
+        total_anoms = Anomaly.query.count()
+        resolved_anoms = Anomaly.query.filter_by(resolved=True).count()
+
+    global_rate = round((resolved_anoms / total_anoms) * 100, 2) if total_anoms else 0
+
     return render_template('pages/compliance.html',
-                           policies=policies,
-                           compliance_rate=compliance_rate)
+                           per_policy=per_policy,
+                           global_rate=global_rate)
+
+
+def flashes_json():
+    """Return and clear Flask flashed messages as JSON list of [category, message]."""
+    msgs = get_flashed_messages(with_categories=True)
+    return jsonify(msgs)
 
 def chat():
     return render_template('pages/chat.html')
