@@ -83,6 +83,9 @@
             <button class="table-button" onclick="showEditSeverityModal({{ a.id }}, '{{ a.severity }}')">
               Editar severidade <i class="fas fa-edit"></i>
             </button>
+            <button class="table-button" onclick="showAddToInvestigationModal({{ a.id }})">
+              Adicionar a investigação
+            </button>
           </td>
         </tr>
         {% else %}
@@ -166,6 +169,39 @@ function showEditSeverityModal(anomalyId, currentSeverity) {
       { label: 'Cancelar', onClick: () => {} }
     ]
   });
+}
+function showAddToInvestigationModal(anomalyId) {
+  // Fetch das investigações existentes
+  fetch('/investigations/dropdown')
+    .then(response => response.json())
+    .then(investigations => {
+      const options = investigations.map(i => `<option value="${i.id}">${i.title}</option>`).join('');
+      showModal({
+        title: 'Adicionar a Investigação',
+        body: `
+          <p>Escolhe a investigação à qual queres adicionar esta anomalia:</p>
+          <select id="investigationSelect" class="form-select w-100">
+            ${options}
+          </select>
+        `,
+        actions: [
+          { 
+            label: 'Adicionar', 
+            onClick: () => {
+              const selectedInvestigationId = document.getElementById('investigationSelect').value;
+              fetch(`/investigations/${selectedInvestigationId}/add_anomaly/${anomalyId}`, {
+                method: 'POST',
+              })
+              .then(res => {
+                if (!res.ok) throw new Error('Falhou a associação');
+                location.reload();
+              })
+            } 
+          },
+          { label: 'Cancelar', onClick: () => {} }
+        ]
+      });
+    });
 }
 </script>
 
