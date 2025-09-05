@@ -6,3 +6,4 @@ app/services/__pycache__/
 app/utils/__pycache__/
 chroma_db/
 uploads/
+app/policy.json

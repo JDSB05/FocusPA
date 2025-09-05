@@ -24,7 +24,12 @@ from .routes import (
     log_bp,
 )
 from .model import Anomaly, User, create_test_anomalies, create_investigation
+from dotenv import load_dotenv
 
+if (load_dotenv(dotenv_path=os.path.join(os.path.dirname(__file__), '.env'))):
+    print("[INFO] .env file loaded successfully")
+else:
+    print("[WARNING] No .env file found in the directory: ", os.path.dirname(__file__))
 
 LLM_MODEL = os.getenv("LLM_MODEL", "deepseek-r1")
 LLM_MODEL_LIGHT = os.getenv("LLM_MODEL_LIGHT", "deepseek-coder-v2")

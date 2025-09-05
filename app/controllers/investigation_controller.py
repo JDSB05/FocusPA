@@ -79,10 +79,14 @@ def add_anomaly(inv_id, anomaly_id):
     investigation = Investigation.query.get_or_404(inv_id)
 
     if anomaly and investigation:
-        investigation.anomalies.append(anomaly)  # assumindo relacionamento many-to-many
-        db.session.commit()
-        flash("Anomalia adicionada à investigação", "Sucesso")
-        return '', 204
+        try:
+            investigation.anomalies.append(anomaly)  # assumindo relacionamento many-to-many
+            db.session.commit()
+            flash("Anomalia adicionada à investigação", "Sucesso")
+            return '', 204
+        except Exception as e:
+            flash("Erro ao adicionar anomalia à investigação", "Erro")
+            return '', 500
     return 'Anomalia ou Investigação não encontrada', 404
 
 def remove_anomaly(inv_id, anomaly_id):
