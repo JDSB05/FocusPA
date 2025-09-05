@@ -12,8 +12,12 @@ from sentence_transformers import SentenceTransformer
 from app.services.embeddings import embed as embed_fn
 from app.services.chroma_client import chroma
 from app.services.elastic import es
+from dotenv import load_dotenv
 
 # ===== Config =====
+
+load_dotenv(dotenv_path='../.env')
+
 EMBED_MODEL = os.environ.get(
     "EMBED_MODEL",
     "PORTULAN/serafim-900m-portuguese-pt-sentence-encoder"
@@ -252,7 +256,7 @@ Resposta (apenas JSON ou null):
         try:
             parsed = json.loads(text)
         except Exception:
-            print(f"[WARN] [Reformulação] Resposta não era JSON: {text[:200]}...")
+            print(f"[WARN] [Reformulação] Resposta não era JSON: {text}...")
             return "null"
 
         if isinstance(parsed, list):
