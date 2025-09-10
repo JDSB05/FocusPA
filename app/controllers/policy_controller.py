@@ -11,8 +11,10 @@ from ..services.chroma_client import chroma
 from datetime import datetime
 import mimetypes
 
-from ..utils.text_chunker import split_into_word_chunks
+from ..utils.text_chunker import get_embedding_chunks, split_into_word_chunks
 from ..services.embeddings import embed
+
+USE_HYDE = os.getenv("USE_HYDE", "false").lower() == "true"
 
 UPLOAD_FOLDER = "uploads"
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
@@ -30,13 +32,20 @@ def add_policy(name: str, content: str, base_meta: dict | None = None):
     col = chroma.get_or_create_collection("policies")
 
     # 1) Chunking
-    chunks = split_into_word_chunks(content, chunk_words=800, overlap=80)
+    chunks, h_questions = split_into_word_chunks(content, chunk_words=400, overlap=40, use_h_quest=USE_HYDE)
     total = len(chunks) if chunks else 1
     if not chunks:
         chunks = [content]
 
     # 2) Embeddings (um por chunk)
-    embeddings = embed(chunks)
+    # embeddings = embed(chunks)
+    # ? Sugestao: no embedding nao deveria ser adicionado a metadata do ficheiro para esta ser usada na procura?
+    # ? Pelo menos o titulo do doc e data maybe?
+
+    # ? Pergunta hipotetica (HyDE)
+    # ? https://medium.com/@roberto.g.infante/advanced-rag-techniques-with-langchain-part-6-d572a859a83f
+    # ? Irá aumentar bastante o tempo de introdução, mas pode melhorar a qualidade dos embeddings I guess
+    embeddings = embed(get_embedding_chunks(name, base_meta.get("filename", "unknown") if base_meta else "unknown", chunks, h_questions))    
 
     # 3) IDs estáveis por chunk (evita conflitos)
     ids = [f"{name}::chunk-{i:04d}" for i in range(total)]

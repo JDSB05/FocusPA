@@ -328,9 +328,9 @@ def chroma_search(query, top_k=5):
     results = chroma.get_or_create_collection("policies").query(
         query_embeddings=[query_embedding], n_results=top_k
     )
-    documents = results.get("documents") or []
-    metadatas = results.get("metadatas") or results.get("metas") or []
-    distances = results.get("distances") or []
+    documents = results.get("documents")[0] or []
+    metadatas = results.get("metadatas")[0] or results.get("metas")[0] or []
+    distances = results.get("distances")[0] or []
 
     pairs = []
     def pick(lst, i):
@@ -419,17 +419,20 @@ def query_hybrid_rag_stream(
     refined = reformulate_for_es(final_question)
     print(f"[INFO] Query reformulada (stream): {refined!r}")
 
-    if is_nullish_query(refined):
-        yield "A pergunta é demasiado vaga para pesquisa. Especifica melhor (ex.: intervalo temporal, event_id, user.name)."
-        return
+    # if is_nullish_query(refined):
+    #     yield "A pergunta é demasiado vaga para pesquisa. Especifica melhor (ex.: intervalo temporal, event_id, user.name)."
+    #     return
 
     # ---- Elasticsearch ----
-    es_docs = es_search(refined, time_from=time_from, time_to=time_to, size=20)
-    es_blocks = [
-        f"@timestamp={d.get('@timestamp')} event.code={_g(d,'event.code')} "
-        f"winlog.event_id={_g(d,'winlog.event_id')} user.name={_g(d,'user.name')}\n{d.get('message','')}"
-        for d in es_docs
-    ]
+    if is_nullish_query(refined):
+        es_blocks = []
+    else:
+        es_docs = es_search(refined, time_from=time_from, time_to=time_to, size=20)
+        es_blocks = [
+            f"@timestamp={d.get('@timestamp')} event.code={_g(d,'event.code')} "
+            f"winlog.event_id={_g(d,'winlog.event_id')} user.name={_g(d,'user.name')}\n{d.get('message','')}"
+            for d in es_docs
+        ]
 
     # ---- Chroma (políticas) ----
     chroma_pairs = chroma_search(final_question, top_k=5)  # usa pergunta natural
