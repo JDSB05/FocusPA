@@ -1,6 +1,8 @@
 # app/services/anomaly_service.py
+import os
 import json
 import logging
+from dotenv import load_dotenv
 from datetime import datetime, timedelta
 
 from ..extensions import db
@@ -8,8 +10,10 @@ from ..model import Anomaly
 from app.controllers.rag_controller import es_search, strip_json_markdown, ask_llm, _g
 from app.utils.policy import build_policy_context_for_prompt
 
-logger = logging.getLogger(__name__)
+if not load_dotenv(os.path.join(os.path.dirname(__file__), '../.env')):
+    print("[WARNING] No .env file found in the directory")
 
+LLM_MODEL = os.getenv("LLM_MODEL", "deepseek-r1")
 
 def classify_events_with_rag(question: str, context: str) -> str:
     prompt = f"""
@@ -38,7 +42,7 @@ Regras:
     print(prompt)
     try:
         print("[Classificação] A enviar prompt ao LLM...")
-        text = ask_llm(prompt, "deepseek-coder-v2").strip()
+        text = ask_llm(prompt, LLM_MODEL).strip()
         text = strip_json_markdown(text)
 
         if text.lower() == "null":
@@ -53,14 +57,14 @@ Regras:
             )
             if valid:
                 return json.dumps(parsed)
-            logger.warning("[Classificação] Lista inválida recebida.")
+            print("[Classificação] Lista inválida recebida.")
             return "null"
 
-        logger.warning(f"[Classificação] Tipo inesperado: {type(parsed)}")
+        print(f"[Classificação] Tipo inesperado: {type(parsed)}")
         return "null"
 
     except Exception as e:
-        logger.error(f"[Classificação] Erro: {e}")
+        print(f"[Classificação] Erro: {e}")
         return "null"
 
 
@@ -73,13 +77,13 @@ def fetch_recent_events(max_events: int = 100, minutes: int = 15):
         "_source": ["@timestamp", "event.code", "winlog.event_id", "user.name", "message", "log.file.path"],
         "size": max_events
     }
-    logger.info(f"[AnomalyService] A buscar eventos recentes desde {start} até {now}...")
+    print(f"[AnomalyService] A buscar eventos recentes desde {start} até {now}...")
     resp = es_search(json.dumps(query))
-    logger.info(f"[AnomalyService] Encontrados {len(resp)} eventos recentes.")
+    print(f"[AnomalyService] Encontrados {len(resp)} eventos recentes.")
 
     events = []
     for source in resp:  # resp já vem flatten com _id no topo, _source expandido
-        logger.debug(f"[AnomalyService] Evento encontrado: {source}")
+        print(f"[AnomalyService] Evento encontrado: {source}")
         events.append({
             "es_id": source.get("_id"),
             "timestamp": source.get("@timestamp"),
@@ -164,7 +168,7 @@ Considera o seguinte contexto para a avaliação (apenas para te orientar, não 
     try:
         anomalies_from_llm = json.loads(raw)
     except Exception as e:
-        logger.error("[AnomalyService] Erro a interpretar resposta LLM: %s", e)
+        print("[AnomalyService] Erro a interpretar resposta LLM: ", e)
         return
 
     new_anomalies = []
@@ -181,7 +185,7 @@ Considera o seguinte contexto para a avaliação (apenas para te orientar, não 
         anomaly = Anomaly(
             log_id=log_id, # type: ignore
             timestamp=evt.get("timestamp"), # type: ignore
-            source=evt.get("source", "LLM"), # type: ignore
+            source=LLM_MODEL, # type: ignore
             description=match.get("description", ""), # type: ignore
             severity=match.get("severity", "medium"), # type: ignore
             resolved=False, # type: ignore

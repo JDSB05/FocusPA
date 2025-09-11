@@ -158,7 +158,7 @@ def ask_llm(prompt: str, model: str) -> str:
         else:
             raise RuntimeError(f"Resposta inesperada do LLM: {response}")
 
-        print(f"[ask_llm] Resposta recebida do LLM: {answer[:80]}...")
+        print(f"[ask_llm] Resposta recebida do LLM: {answer}...")
         return delete_think(answer)
 
     except Exception as e:

@@ -39,12 +39,6 @@ def add_policy(name: str, content: str, base_meta: dict | None = None):
 
     # 2) Embeddings (um por chunk)
     # embeddings = embed(chunks)
-    # ? Sugestao: no embedding nao deveria ser adicionado a metadata do ficheiro para esta ser usada na procura?
-    # ? Pelo menos o titulo do doc e data maybe?
-
-    # ? Pergunta hipotetica (HyDE)
-    # ? https://medium.com/@roberto.g.infante/advanced-rag-techniques-with-langchain-part-6-d572a859a83f
-    # ? Irá aumentar bastante o tempo de introdução, mas pode melhorar a qualidade dos embeddings I guess
     embeddings = embed(get_embedding_chunks(name, base_meta.get("filename", "unknown") if base_meta else "unknown", chunks, h_questions))    
 
     # 3) IDs estáveis por chunk (evita conflitos)
