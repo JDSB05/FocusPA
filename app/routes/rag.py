@@ -16,6 +16,8 @@ def rag_query():
     data = request.get_json(silent=True) or {}
     question = (data.get("question") or "").strip()
     messages = data.get("messages") or []  # histórico vindo do browser (lista de {role, content})
+    max_es_logs = data.get("max_es_logs")
+    max_chroma_chunks = data.get("max_chroma_chunks")
 
     if not question and not (isinstance(messages, list) and len(messages) > 0):
         return jsonify({"error": "Missing 'question' or 'messages'"}), 400
@@ -24,7 +26,12 @@ def rag_query():
         start_time = time.time()
         try:
             # stream apenas do texto final (o mais simples possível)
-            for chunk in query_hybrid_rag_stream(question=question, messages=messages):
+            for chunk in query_hybrid_rag_stream(
+                question=question,
+                messages=messages,
+                max_es_logs=max_es_logs,
+                max_chroma_chunks=max_chroma_chunks,
+            ):
                 # enviar logo que chega
                 yield chunk
         except Exception as e:

@@ -12,6 +12,7 @@ from sentence_transformers import SentenceTransformer
 from app.services.embeddings import embed as embed_fn
 from app.services.chroma_client import chroma
 from app.services.elastic import es
+from app.utils.metrics import LLMRunMetrics, count_tokens
 from dotenv import load_dotenv
 
 # ===== Config =====
@@ -34,6 +35,75 @@ ollama = Client(
 
 # ===== Embeddings =====
 embedder = SentenceTransformer(EMBED_MODEL)
+
+# ===== Metrics helpers =====
+
+def _parse_limit(value, default: int) -> int:
+    try:
+        if value is None:
+            return default
+        return max(int(value), 0)
+    except (TypeError, ValueError):
+        return default
+
+
+def get_context_limits(
+    max_es_logs: int | None = None,
+    max_chroma_chunks: int | None = None,
+) -> tuple[int, int]:
+    """Resolve how many ES logs and Chroma chunks should be used."""
+
+    default_es = _parse_limit(os.environ.get("RAG_ES_LOG_LIMIT"), 20)
+    default_chroma = _parse_limit(os.environ.get("RAG_CHROMA_LIMIT"), 5)
+
+    es_limit = _parse_limit(max_es_logs, default_es)
+    chroma_limit = _parse_limit(max_chroma_chunks, default_chroma)
+    return es_limit, chroma_limit
+
+
+def prepare_rag_context(
+    *,
+    natural_question: str,
+    refined_query: str,
+    es_limit: int,
+    chroma_limit: int,
+    time_from: str | None = None,
+    time_to: str | None = None,
+) -> dict:
+    """Fetch context from Elasticsearch and Chroma respecting the limits."""
+
+    es_blocks: list[str] = []
+    if es_limit > 0:
+        es_docs = es_search(refined_query, time_from=time_from, time_to=time_to, size=es_limit)
+        es_blocks = [
+            f"@timestamp={d.get('@timestamp')} event.code={_g(d,'event.code')} "
+            f"winlog.event_id={_g(d,'winlog.event_id')} user.name={_g(d,'user.name')}\n{d.get('message','')}"
+            for d in es_docs
+        ]
+
+    chroma_blocks: list[str] = []
+    if chroma_limit > 0:
+        chroma_pairs = chroma_search(natural_question, top_k=chroma_limit)
+        chroma_blocks = [f"[POLICY]\n{p['text']}" for p in chroma_pairs if p.get("text")]
+
+    context_blocks = es_blocks + chroma_blocks
+    context_text = "\n\n---\n\n".join(context_blocks[:12])
+
+    return {
+        "es_blocks": es_blocks,
+        "chroma_blocks": chroma_blocks,
+        "context_blocks": context_blocks,
+        "context_text": context_text,
+    }
+
+
+def _format_messages_for_metrics(messages: list[dict]) -> str:
+    parts = []
+    for msg in messages:
+        role = (msg.get("role") or "user").lower()
+        content = msg.get("content") or ""
+        parts.append(f"{role}: {content}")
+    return "\n\n".join(parts)
 
 # ===== Util =====
 def delete_think(text: str) -> str:
@@ -366,27 +436,58 @@ Pergunta original:
 Resposta:"""
 
 # ===== RAG (compat: não stream) =====
-def query_hybrid_rag(question: str, time_from: str | None = None, time_to: str | None = None) -> str:
+def query_hybrid_rag(
+    question: str,
+    time_from: str | None = None,
+    time_to: str | None = None,
+    max_es_logs: int | None = None,
+    max_chroma_chunks: int | None = None,
+) -> str:
     refined = reformulate_for_es(question)
     print(f"[INFO] Query reformulada: {refined!r}")
     if is_nullish_query(refined):
         print("[INFO] Pergunta demasiado vaga, não há pesquisa.")
         return "A pergunta é demasiado vaga para pesquisa. Especifica melhor (ex.: intervalo temporal, event_id, user.name)."
 
-    es_docs = es_search(refined, time_from=time_from, time_to=time_to, size=20)
-    es_blocks = [
-        f"@timestamp={d.get('@timestamp')} event.code={_g(d,'event.code')} "
-        f"winlog.event_id={_g(d,'winlog.event_id')} user.name={_g(d,'user.name')}\n{d.get('message','')}"
-        for d in es_docs
-    ]
-    chroma_pairs = chroma_search(question, top_k=5)  # usar pergunta natural
-    chroma_blocks = [f"[POLICY]\n{p['text']}" for p in chroma_pairs if p.get("text")]
+    es_limit, chroma_limit = get_context_limits(max_es_logs, max_chroma_chunks)
+    ctx = prepare_rag_context(
+        natural_question=question,
+        refined_query=refined,
+        es_limit=es_limit,
+        chroma_limit=chroma_limit,
+        time_from=time_from,
+        time_to=time_to,
+    )
 
-    blocks = es_blocks + chroma_blocks
+    blocks = ctx["context_blocks"]
     if not blocks:
         return "Não encontrei contexto relevante no Elasticsearch nem no Chroma para responder."
+
     final_prompt = build_final_prompt(blocks[:12], question)
-    return ask_llm(final_prompt, LLM_MODEL)
+    extras = {
+        "num_es_logs": len(ctx["es_blocks"]),
+        "num_chroma_chunks": len(ctx["chroma_blocks"]),
+        "elastic_logs_limit": es_limit,
+        "chroma_chunks_limit": chroma_limit,
+        "question_tokens": count_tokens(question, LLM_MODEL),
+        "question_chars": len(question),
+        "context_tokens": count_tokens(ctx["context_text"], LLM_MODEL),
+        "context_chars": len(ctx["context_text"]),
+    }
+
+    with LLMRunMetrics(
+        model=LLM_MODEL,
+        prompt_text=final_prompt,
+        service="chat",
+        operation="hybrid_rag",
+        extra=extras,
+    ) as metrics:
+        response = ask_llm(final_prompt, LLM_MODEL)
+        metrics.set_response_text(response)
+        stripped = response.strip()
+        if stripped.startswith("❌"):
+            metrics.mark_success(False, stripped)
+    return response
 
 # ----- RAG (stream)
 def query_hybrid_rag_stream(
@@ -395,6 +496,8 @@ def query_hybrid_rag_stream(
     time_to: str | None = None,
     messages: list[dict] | None = None,   # histórico do browser
     model: str = LLM_MODEL,                # usa o teu default
+    max_es_logs: int | None = None,
+    max_chroma_chunks: int | None = None,
 ):
     """
     Constrói contexto via RAG (ES + Chroma), injeta como mensagem SYSTEM
@@ -424,24 +527,23 @@ def query_hybrid_rag_stream(
         return
 
     # ---- Elasticsearch ----
-    es_docs = es_search(refined, time_from=time_from, time_to=time_to, size=20)
-    es_blocks = [
-        f"@timestamp={d.get('@timestamp')} event.code={_g(d,'event.code')} "
-        f"winlog.event_id={_g(d,'winlog.event_id')} user.name={_g(d,'user.name')}\n{d.get('message','')}"
-        for d in es_docs
-    ]
+    es_limit, chroma_limit = get_context_limits(max_es_logs, max_chroma_chunks)
+    ctx = prepare_rag_context(
+        natural_question=final_question,
+        refined_query=refined,
+        es_limit=es_limit,
+        chroma_limit=chroma_limit,
+        time_from=time_from,
+        time_to=time_to,
+    )
 
-    # ---- Chroma (políticas) ----
-    chroma_pairs = chroma_search(final_question, top_k=5)  # usa pergunta natural
-    chroma_blocks = [f"[POLICY]\n{p['text']}" for p in chroma_pairs if p.get("text")]
-
-    blocks = es_blocks + chroma_blocks
+    blocks = ctx["context_blocks"]
     if not blocks:
         yield "Não encontrei contexto relevante no Elasticsearch nem no Chroma para responder."
         return
 
     # ---- Mensagem SYSTEM com o contexto RAG ----
-    context = "\n\n---\n\n".join(blocks[:12])
+    context = ctx["context_text"]
     system_ctx = (
         "Contexto (logs e políticas relevantes):\n"
         f"{context}\n\n"
@@ -468,15 +570,40 @@ def query_hybrid_rag_stream(
     # ---- Compose mensagens para o LLM (SYSTEM + histórico do browser) ----
     combined_messages = [{"role": "system", "content": system_ctx}] + norm_msgs
 
-    # ---- Chamada ao LLM em stream (com limpeza do <think> se aplicares) ----
-    try:
-        for piece in delete_think_stream(
-            ask_llm_stream(
-                prompt=None,  # usamos messages
-                model=model,
-                messages=combined_messages
-            )
-        ):
-            yield piece
-    except Exception as e:
-        yield f"\n❌ Erro ao contactar o LLM: {e}\n"
+    metrics_extra = {
+        "num_es_logs": len(ctx["es_blocks"]),
+        "num_chroma_chunks": len(ctx["chroma_blocks"]),
+        "elastic_logs_limit": es_limit,
+        "chroma_chunks_limit": chroma_limit,
+        "question_tokens": count_tokens(final_question, model),
+        "question_chars": len(final_question),
+        "context_tokens": count_tokens(context, model),
+        "context_chars": len(context),
+    }
+
+    metrics_prompt = _format_messages_for_metrics(combined_messages)
+
+    with LLMRunMetrics(
+        model=model,
+        prompt_text=metrics_prompt,
+        service="chat",
+        operation="hybrid_rag_stream",
+        extra=metrics_extra,
+    ) as metrics:
+        try:
+            for piece in delete_think_stream(
+                ask_llm_stream(
+                    prompt=None,  # usamos messages
+                    model=model,
+                    messages=combined_messages
+                )
+            ):
+                metrics.add_response_chunk(piece)
+                yield piece
+            metrics.mark_success(True)
+        except Exception as e:
+            error_text = f"\n❌ Erro ao contactar o LLM: {e}\n"
+            metrics.add_response_chunk(error_text)
+            metrics.mark_success(False, str(e))
+            yield error_text
+
