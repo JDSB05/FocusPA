@@ -12,4 +12,3 @@ pymupdf
 python-docx
 apscheduler
 ollama
-tiktoken
