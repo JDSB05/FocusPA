@@ -12,12 +12,6 @@ from sentence_transformers import SentenceTransformer
 from app.services.embeddings import embed as embed_fn
 from app.services.chroma_client import chroma
 from app.services.elastic import es
-from app.services.metrics import (
-    LLMMetricsTracker,
-    count_tokens,
-    count_tokens_in_messages,
-    track_llm_interaction,
-)
 from dotenv import load_dotenv
 
 # ===== Config =====
@@ -281,87 +275,50 @@ Resposta (apenas JSON ou null):
 
 # ===== Elasticsearch =====
 
-def es_search(
-    query_text: str,
-    time_from: str | None = None,
-    time_to: str | None = None,
-    size: int = 20,
-    return_metadata: bool = False,
-):
-    """Execute an Elasticsearch query and optionally return metadata."""
-
-    query_type = "json"
+def es_search(query_text: str, time_from: str | None = None, time_to: str | None = None, size: int = 20):
+    """
+    Se query_text for JSON válido, envia diretamente para ES.
+    Caso contrário, faz pesquisa BM25 no campo 'message' com filtro temporal opcional.
+    """
     try:
+        # tentar interpretar como JSON
         body = json.loads(query_text)
         print("[INFO] Query ES recebida em formato JSON válido.")
         print(body)
     except json.JSONDecodeError:
-        query_type = "bm25"
         print("[INFO] Query ES não é JSON. A usar BM25.")
         print(f"[INFO] Query ES original: {query_text}")
         must = [{"match": {"message": {"query": query_text}}}]
         filter_terms = []
         if time_from or time_to:
             rng = {}
-            if time_from:
-                rng["gte"] = time_from
-            if time_to:
-                rng["lte"] = time_to
+            if time_from: rng["gte"] = time_from
+            if time_to:   rng["lte"] = time_to
             filter_terms.append({"range": {"@timestamp": rng}})
         body = {
             "query": {
                 "bool": {
                     "must": must,
-                    "filter": filter_terms,
+                    "filter": filter_terms
                 }
             },
             "_source": [
-                "@timestamp",
-                "event.code",
-                "winlog.event_id",
-                "user.name",
-                "message",
-                "log.file.path",
+                "@timestamp", "event.code", "winlog.event_id",
+                "user.name", "message", "log.file.path"
             ],
-            "size": size,
+            "size": size
         }
-
-    metadata: dict[str, object] = {
-        "query_type": query_type,
-        "requested_size": size,
-    }
 
     try:
         res = es.search(index="winlog-*", body=body)
         hits = res.get("hits", {}).get("hits", [])
         print(f"[INFO] [Elasticsearch] Encontrados {len(hits)} resultados.")
-
-        total = res.get("hits", {}).get("total")
-        if isinstance(total, dict):
-            total_value = total.get("value")
-        else:
-            total_value = total
-
-        metadata.update(
-            {
-                "total_es_hits": total_value,
-                "es_took_ms": res.get("took"),
-                "es_hits": len(hits),
-            }
-        )
-
-        processed_hits = [
+        return [
             {**h["_source"], "_id": h["_id"], "_index": h["_index"]}
             for h in hits
         ]
-        if return_metadata:
-            return processed_hits, metadata
-        return processed_hits
     except Exception as e:
         print(f"[WARN] [Elasticsearch] {e}")
-        if return_metadata:
-            metadata.setdefault("notes", str(e))
-            return [], metadata
         return []
 
 # ===== Chroma =====
@@ -409,68 +366,27 @@ Pergunta original:
 Resposta:"""
 
 # ===== RAG (compat: não stream) =====
-def query_hybrid_rag(
-    question: str,
-    time_from: str | None = None,
-    time_to: str | None = None,
-) -> str:
-    with track_llm_interaction("rag_chat_sync", LLM_MODEL) as tracker:
-        tracker.set_extra("question_tokens", count_tokens(question, LLM_MODEL))
+def query_hybrid_rag(question: str, time_from: str | None = None, time_to: str | None = None) -> str:
+    refined = reformulate_for_es(question)
+    print(f"[INFO] Query reformulada: {refined!r}")
+    if is_nullish_query(refined):
+        print("[INFO] Pergunta demasiado vaga, não há pesquisa.")
+        return "A pergunta é demasiado vaga para pesquisa. Especifica melhor (ex.: intervalo temporal, event_id, user.name)."
 
-        refined = reformulate_for_es(question)
-        print(f"[INFO] Query reformulada: {refined!r}")
-        if is_nullish_query(refined):
-            print("[INFO] Pergunta demasiado vaga, não há pesquisa.")
-            tracker.update_extra({
-                "es_hits": 0,
-                "chroma_hits": 0,
-                "notes": "nullish_query",
-            })
-            return (
-                "A pergunta é demasiado vaga para pesquisa. Especifica melhor (ex.: intervalo temporal, event_id, user.name)."
-            )
+    es_docs = es_search(refined, time_from=time_from, time_to=time_to, size=20)
+    es_blocks = [
+        f"@timestamp={d.get('@timestamp')} event.code={_g(d,'event.code')} "
+        f"winlog.event_id={_g(d,'winlog.event_id')} user.name={_g(d,'user.name')}\n{d.get('message','')}"
+        for d in es_docs
+    ]
+    chroma_pairs = chroma_search(question, top_k=5)  # usar pergunta natural
+    chroma_blocks = [f"[POLICY]\n{p['text']}" for p in chroma_pairs if p.get("text")]
 
-        es_docs, es_meta = es_search(
-            refined,
-            time_from=time_from,
-            time_to=time_to,
-            size=20,
-            return_metadata=True,
-        )
-        tracker.update_extra(
-            {
-                "es_hits": len(es_docs),
-                "elastic_query_type": es_meta.get("query_type"),
-                "es_took_ms": es_meta.get("es_took_ms"),
-                "total_es_hits": es_meta.get("total_es_hits"),
-            }
-        )
-
-        es_blocks = [
-            f"@timestamp={d.get('@timestamp')} event.code={_g(d,'event.code')} "
-            f"winlog.event_id={_g(d,'winlog.event_id')} user.name={_g(d,'user.name')}\n{d.get('message','')}"
-            for d in es_docs
-        ]
-
-        chroma_pairs = chroma_search(question, top_k=5)
-        chroma_blocks = [f"[POLICY]\n{p['text']}" for p in chroma_pairs if p.get("text")]
-        tracker.set_extra("chroma_hits", len(chroma_blocks))
-
-        blocks = es_blocks + chroma_blocks
-        if not blocks:
-            tracker.set_extra("notes", "no_context")
-            return "Não encontrei contexto relevante no Elasticsearch nem no Chroma para responder."
-
-        context_text = "\n\n---\n\n".join(blocks[:12])
-        tracker.set_extra("context_tokens", count_tokens(context_text, LLM_MODEL))
-        tracker.set_extra("history_tokens", 0)
-
-        final_prompt = build_final_prompt(blocks[:12], question)
-        tracker.add_prompt(final_prompt)
-        response = ask_llm(final_prompt, LLM_MODEL)
-        tracker.record_response(response)
-        tracker.set_extra("notes", "completed")
-        return response
+    blocks = es_blocks + chroma_blocks
+    if not blocks:
+        return "Não encontrei contexto relevante no Elasticsearch nem no Chroma para responder."
+    final_prompt = build_final_prompt(blocks[:12], question)
+    return ask_llm(final_prompt, LLM_MODEL)
 
 # ----- RAG (stream)
 def query_hybrid_rag_stream(
@@ -496,22 +412,7 @@ def query_hybrid_rag_stream(
         return ""
 
     final_question = (question or "").strip() or _last_user_question(messages)
-
-    tracker = LLMMetricsTracker("rag_chat_stream", model)
-    tracker.set_extra("question_tokens", count_tokens(final_question, model))
-
-    tracker_finalized = False
-
-    def _finalize(extra: dict | None = None):
-        nonlocal tracker_finalized
-        if tracker_finalized:
-            return
-        tracker.finalize(extra)
-        tracker_finalized = True
-
     if not final_question:
-        tracker.set_extra("notes", "empty_question")
-        _finalize()
         yield "Pergunta vazia."
         return
 
@@ -519,46 +420,28 @@ def query_hybrid_rag_stream(
     print(f"[INFO] Query reformulada (stream): {refined!r}")
 
     if is_nullish_query(refined):
-        tracker.update_extra({"notes": "nullish_query", "es_hits": 0, "chroma_hits": 0})
-        _finalize()
         yield "A pergunta é demasiado vaga para pesquisa. Especifica melhor (ex.: intervalo temporal, event_id, user.name)."
         return
 
-    es_docs, es_meta = es_search(
-        refined,
-        time_from=time_from,
-        time_to=time_to,
-        size=20,
-        return_metadata=True,
-    )
-    tracker.update_extra(
-        {
-            "es_hits": len(es_docs),
-            "elastic_query_type": es_meta.get("query_type"),
-            "es_took_ms": es_meta.get("es_took_ms"),
-            "total_es_hits": es_meta.get("total_es_hits"),
-        }
-    )
-
+    # ---- Elasticsearch ----
+    es_docs = es_search(refined, time_from=time_from, time_to=time_to, size=20)
     es_blocks = [
         f"@timestamp={d.get('@timestamp')} event.code={_g(d,'event.code')} "
         f"winlog.event_id={_g(d,'winlog.event_id')} user.name={_g(d,'user.name')}\n{d.get('message','')}"
         for d in es_docs
     ]
 
-    chroma_pairs = chroma_search(final_question, top_k=5)
+    # ---- Chroma (políticas) ----
+    chroma_pairs = chroma_search(final_question, top_k=5)  # usa pergunta natural
     chroma_blocks = [f"[POLICY]\n{p['text']}" for p in chroma_pairs if p.get("text")]
-    tracker.set_extra("chroma_hits", len(chroma_blocks))
 
     blocks = es_blocks + chroma_blocks
     if not blocks:
-        tracker.set_extra("notes", "no_context")
-        _finalize()
         yield "Não encontrei contexto relevante no Elasticsearch nem no Chroma para responder."
         return
 
+    # ---- Mensagem SYSTEM com o contexto RAG ----
     context = "\n\n---\n\n".join(blocks[:12])
-    tracker.set_extra("context_tokens", count_tokens(context, model))
     system_ctx = (
         "Contexto (logs e políticas relevantes):\n"
         f"{context}\n\n"
@@ -568,6 +451,7 @@ def query_hybrid_rag_stream(
         f"- Hoje é {datetime.utcnow().isoformat()}Z.\n"
     )
 
+    # ---- Normaliza histórico do browser (mantém últimas N mensagens) ----
     N = 12
     norm_msgs = []
     if isinstance(messages, list):
@@ -577,30 +461,22 @@ def query_hybrid_rag_stream(
             if content:
                 norm_msgs.append({"role": role, "content": content})
 
+    # Garante que a última mensagem do histórico é a 'final_question' (do user)
     if not norm_msgs or norm_msgs[-1]["role"] != "user":
         norm_msgs.append({"role": "user", "content": final_question})
 
+    # ---- Compose mensagens para o LLM (SYSTEM + histórico do browser) ----
     combined_messages = [{"role": "system", "content": system_ctx}] + norm_msgs
 
-    tracker.add_prompt(system_ctx)
-    tracker.add_prompts([m.get("content") for m in norm_msgs])
-    tracker.set_extra("history_tokens", count_tokens_in_messages(norm_msgs, model))
-
+    # ---- Chamada ao LLM em stream (com limpeza do <think> se aplicares) ----
     try:
         for piece in delete_think_stream(
             ask_llm_stream(
-                prompt=None,
+                prompt=None,  # usamos messages
                 model=model,
-                messages=combined_messages,
+                messages=combined_messages
             )
         ):
-            tracker.record_response(piece)
             yield piece
-        tracker.set_extra("notes", "completed")
     except Exception as e:
-        error_msg = f"\n❌ Erro ao contactar o LLM: {e}\n"
-        tracker.record_response(error_msg)
-        tracker.set_extra("notes", f"exception: {e}")
-        yield error_msg
-    finally:
-        _finalize()
+        yield f"\n❌ Erro ao contactar o LLM: {e}\n"
