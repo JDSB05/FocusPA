@@ -11,7 +11,7 @@ from ..services.chroma_client import chroma
 from datetime import datetime
 import mimetypes
 
-from ..utils.text_chunker import get_embedding_chunks, split_into_word_chunks
+from ..utils.text_chunker import get_embedding_chunks, get_h_questions, nat_lang_to_es, split_into_word_chunks
 from ..services.embeddings import embed
 
 USE_HYDE = os.getenv("USE_HYDE", "false").lower() == "true"
@@ -21,7 +21,7 @@ os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
 def list_policies():
     """Retorna todas as políticas armazenadas."""
-    return render_template('pages/policies.html', policies=Policy.query.order_by(Policy.name).all())
+    return render_template('pages/policies.html', policies=Policy.query.order_by(Policy.name).all(), items={'documents': [], 'ids': [], 'metadatas': {'es_query': [], 'reasoning': []}})
 
 def add_policy(name: str, content: str, base_meta: dict | None = None):
     """
@@ -32,10 +32,17 @@ def add_policy(name: str, content: str, base_meta: dict | None = None):
     col = chroma.get_or_create_collection("policies")
 
     # 1) Chunking
-    chunks, h_questions = split_into_word_chunks(content, chunk_words=400, overlap=40, use_h_quest=USE_HYDE)
+    chunks = split_into_word_chunks(content, chunk_words=800, overlap=80)
     total = len(chunks) if chunks else 1
     if not chunks:
         chunks = [content]
+
+    h_questions = get_h_questions(chunks) if USE_HYDE else []
+    
+    llm_data = [nat_lang_to_es(c) for c in chunks]
+    chunk_es_queries, chunk_reasonings = zip(*llm_data) if llm_data else ([], [])
+    chunk_es_queries = list(chunk_es_queries)
+    chunk_reasonings = list(chunk_reasonings)
 
     # 2) Embeddings (um por chunk)
     # embeddings = embed(chunks)
@@ -53,12 +60,12 @@ def add_policy(name: str, content: str, base_meta: dict | None = None):
             "chunk_index": i,
             "total_chunks": total,
             "ingested_at": datetime.utcnow().isoformat() + "Z",
+            "es_query": chunk_es_queries[i] if i < len(chunk_es_queries) else None,
+            "reasoning": chunk_reasonings[i] if i < len(chunk_reasonings) else None,
         }
         md.update(base_meta)
         metadatas.append(md)
 
-    # 5) Inserir na Chroma (um batch)
-    print(f"[INFO] [Chroma] Adding policy '{name}' com {total} chunks")
     col.add(ids=ids, documents=chunks, metadatas=metadatas, embeddings=embeddings)
     print("[INFO] [Chroma] Policy chunks added")
 
@@ -67,6 +74,57 @@ def add_policy(name: str, content: str, base_meta: dict | None = None):
     db.session.add(policy)
     db.session.commit()
 
+    return ids
+
+
+def save_signatures():
+    if request.method == 'POST':
+        data = request.get_json()
+        if not data or 'accepted' not in data or 'rejected' not in data:
+            return jsonify({'error': 'Invalid or missing data'}), 400
+
+        accepted = data['accepted']
+        rejected = data['rejected']
+
+        # Update ChromaDB: set es_query and reasoning to "" for rejected chunks
+        col = chroma.get_or_create_collection("policies")
+        for chunk_id in rejected:
+            try:
+                # Update only the rejected chunk's metadata
+                col.update(
+                    ids=[chunk_id],
+                    metadatas=[{"es_query": "", "reasoning": ""}]
+                )
+            except Exception as e:
+                print(f"[ERROR] [save_signatures] Failed to clear metadata for {chunk_id}: {e}")
+
+        return jsonify({'accepted': accepted}), 200
+
+
+def review_extracted_signs(ids: list[str]):
+    """ Prepara o HTML para rever as assinaturas (queries ES dos eventos que não respeitam a politica correspondente) extraídas automáticamente pelo LLM.
+    Também prepara as razões (reasoning) para cada query. """
+
+    col = chroma.get_or_create_collection("policies")
+    res = col.get(ids=ids, include=["documents", "metadatas"])
+
+    # Filtra as entradas sem es_query (queries vazias)
+    filtered_indexes = [
+        i for i, md in enumerate(res.get('metadatas', []))
+        if md.get('es_query', '') != ""
+    ]
+
+    # Reconstrói o dicionário com os itens filtrados
+    items = {
+        'documents': [res['documents'][i] for i in filtered_indexes],
+        'ids': [res['ids'][i] for i in filtered_indexes],
+        'metadatas': {
+            'es_query': [res['metadatas'][i].get('es_query', '') for i in filtered_indexes],
+            'reasoning': [res['metadatas'][i].get('reasoning', '') for i in filtered_indexes]
+        }
+    }
+
+    return render_template('pages/policies.html', items=items)
 
 def policy_new():
     if request.method == 'POST':
@@ -107,12 +165,16 @@ def policy_new():
             delete_policy(name)
 
             # Adiciona em chunks com metadados e embeddings
-            add_policy(name=name, content=content, base_meta=base_meta)
+            added_ids = add_policy(name=name, content=content, base_meta=base_meta)
 
             flash('Política criada com sucesso.', 'Sucesso')
-            return redirect(url_for('policy.list_policies'))
+            return review_extracted_signs(added_ids)
+            # return render_template('pages/policies_.html')
         
         except Exception as e:
+            import traceback
+            print(f"Erro ao processar política: {type(e).__name__}: {e}")
+            traceback.print_exc()
             flash(f"Erro ao processar política: {e}", 'Erro')
             return redirect(request.url)
 

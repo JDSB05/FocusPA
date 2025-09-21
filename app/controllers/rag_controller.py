@@ -231,6 +231,7 @@ Regras:
 - Se a pergunta for muito vaga e não houver dados suficientes para gerar a query, devolver apenas: null
 
 Campos comuns que podes usar: 
+- "hour_of_day" (range)
 - "@timestamp" (range)
 - "event.code"
 - "winlog.event_id"
