@@ -1,5 +1,6 @@
 # /controllers/rag_controller.py
 from datetime import datetime
+from contextlib import nullcontext
 import os
 import re
 import json
@@ -209,36 +210,83 @@ def _g(d, path, default=None):
 
 # ===== LLM (não-stream, compat) =====
 
-def ask_llm(prompt: str, model: str) -> str:
+def ask_llm(
+    prompt: str,
+    model: str,
+    *,
+    metrics_service: str | None = None,
+    metrics_operation: str | None = None,
+    metrics_extra: dict | None = None,
+    metrics_prompt: str | None = None,
+) -> str:
+    metrics_obj: LLMRunMetrics | None = None
     try:
         print(f"[ask_llm] Enviando prompt para modelo '{model}'...")
         prompt = prompt.lstrip("\u0001")
 
-        # Chamada ao Ollama (lib Python)
-        response = ollama.chat(
-            model=model,
-            messages=[{"role": "user", "content": prompt}],
+        extra = dict(metrics_extra or {})
+        metrics_prompt_text = metrics_prompt or prompt
+        metrics_cm = (
+            LLMRunMetrics(
+                model=model,
+                prompt_text=metrics_prompt_text,
+                service=metrics_service,
+                operation=metrics_operation,
+                extra=extra,
+            )
+            if metrics_service and metrics_operation
+            else nullcontext()
         )
 
-        # Extrair a resposta do LLM
-        if "message" in response and "content" in response["message"]:
-            answer = response["message"]["content"]
-        elif "response" in response:
-            answer = response["response"]
-        else:
-            raise RuntimeError(f"Resposta inesperada do LLM: {response}")
+        with metrics_cm as metrics_ctx:
+            metrics_obj = metrics_ctx if isinstance(metrics_ctx, LLMRunMetrics) else None
+            try:
+                # Chamada ao Ollama (lib Python)
+                response = ollama.chat(
+                    model=model,
+                    messages=[{"role": "user", "content": prompt}],
+                )
 
-        print(f"[ask_llm] Resposta recebida do LLM: {answer[:80]}...")
-        return delete_think(answer)
+                # Extrair a resposta do LLM
+                if "message" in response and "content" in response["message"]:
+                    answer = response["message"]["content"]
+                elif "response" in response:
+                    answer = response["response"]
+                else:
+                    raise RuntimeError(f"Resposta inesperada do LLM: {response}")
+
+                print(f"[ask_llm] Resposta recebida do LLM: {answer[:80]}...")
+                cleaned = delete_think(answer)
+                if metrics_obj:
+                    metrics_obj.set_response_text(cleaned)
+                    if cleaned.strip().startswith("❌"):
+                        metrics_obj.mark_success(False, cleaned.strip())
+                return cleaned
+
+            except Exception as e:
+                error_text = f"❌ Erro ao contactar o LLM: {e}"
+                if metrics_obj:
+                    metrics_obj.set_response_text(error_text)
+                    metrics_obj.mark_success(False, str(e))
+                return error_text
 
     except Exception as e:
-        return f"❌ Erro ao contactar o LLM: {e}"
+        error_text = f"❌ Erro ao contactar o LLM: {e}"
+        if metrics_obj:
+            metrics_obj.set_response_text(error_text)
+            metrics_obj.mark_success(False, str(e))
+        return error_text
 
 # ===== LLM (stream) =====
 def ask_llm_stream(
     prompt: str | None = None,
     model: str = LLM_MODEL,
-    messages: list[dict] | None = None
+    messages: list[dict] | None = None,
+    *,
+    metrics_service: str | None = None,
+    metrics_operation: str | None = None,
+    metrics_extra: dict | None = None,
+    metrics_prompt: str | None = None,
 ):
     """
     Stream de resposta do LLM via biblioteca ollama.
@@ -246,6 +294,8 @@ def ask_llm_stream(
       [{"role":"system"|"user"|"assistant", "content":"..."}]
     Caso contrário, usa um único prompt como mensagem de utilizador.
     """
+    metrics: LLMRunMetrics | None = None
+    collected_chunks: list[str] = []
     try:
         # Normaliza mensagens vindas do browser (se existirem)
         if messages and isinstance(messages, list):
@@ -266,26 +316,74 @@ def ask_llm_stream(
                 raise ValueError("ask_llm_stream: precisa de `prompt` ou `messages`.")
             msgs = [{"role": "user", "content": prompt.lstrip("\u0001")}]
 
-        # Streaming com Ollama
-        stream = ollama.chat(
-            model=model,
-            messages=msgs,
-            stream=True,
-            think=False
+        metrics_prompt_text = metrics_prompt
+        if metrics_prompt_text is None:
+            if messages and isinstance(messages, list):
+                metrics_prompt_text = _format_messages_for_metrics(msgs)
+            else:
+                metrics_prompt_text = prompt or ""
+
+        extra = dict(metrics_extra or {})
+        metrics_cm = (
+            LLMRunMetrics(
+                model=model,
+                prompt_text=metrics_prompt_text,
+                service=metrics_service,
+                operation=metrics_operation,
+                extra=extra,
+            )
+            if metrics_service and metrics_operation
+            else nullcontext()
         )
 
-        for chunk in stream:
-            # Cada chunk pode vir como {"message": {"content": "..."}}
-            # ou (alguns modelos) {"response": "..."}
-            content = (chunk.get("message") or {}).get("content") or chunk.get("response")
-            if content:
-                yield content
-            if chunk.get("done"):
-                break
+        with metrics_cm as metrics_ctx:
+            metrics = metrics_ctx if isinstance(metrics_ctx, LLMRunMetrics) else None
+            collected_chunks = []
+            try:
+                # Streaming com Ollama
+                stream = ollama.chat(
+                    model=model,
+                    messages=msgs,
+                    stream=True,
+                    think=False
+                )
+
+                for chunk in stream:
+                    # Cada chunk pode vir como {"message": {"content": "..."}}
+                    # ou (alguns modelos) {"response": "..."}
+                    content = (chunk.get("message") or {}).get("content") or chunk.get("response")
+                    if content:
+                        collected_chunks.append(content)
+                        yield content
+                    if chunk.get("done"):
+                        break
+
+            except Exception as e:
+                print(f"[ERROR] ask_llm_stream: {e}")
+                error_text = f"\n❌ Erro ao contactar o LLM: {e}\n"
+                collected_chunks.append(error_text)
+                if metrics:
+                    cleaned = delete_think("".join(collected_chunks))
+                    metrics.set_response_text(cleaned)
+                    metrics.mark_success(False, str(e))
+                yield error_text
+                return
+
+            if metrics:
+                cleaned = delete_think("".join(collected_chunks))
+                metrics.set_response_text(cleaned)
+                metrics.mark_success(True)
 
     except Exception as e:
-        print(f"[ERROR] ask_llm_stream: {e}")   
-        yield f"\n❌ Erro ao contactar o LLM: {e}\n"
+        print(f"[ERROR] ask_llm_stream: {e}")
+        error_text = f"\n❌ Erro ao contactar o LLM: {e}\n"
+        collected_chunks.append(error_text)
+        if metrics:
+            cleaned = delete_think("".join(collected_chunks))
+            metrics.set_response_text(cleaned)
+            metrics.mark_success(False, str(e))
+        yield error_text
+        return
 
 # ===== Reformulação =====
 def reformulate_for_es(question: str) -> str:
@@ -475,18 +573,13 @@ def query_hybrid_rag(
         "context_chars": len(ctx["context_text"]),
     }
 
-    with LLMRunMetrics(
-        model=LLM_MODEL,
-        prompt_text=final_prompt,
-        service="chat",
-        operation="hybrid_rag",
-        extra=extras,
-    ) as metrics:
-        response = ask_llm(final_prompt, LLM_MODEL)
-        metrics.set_response_text(response)
-        stripped = response.strip()
-        if stripped.startswith("❌"):
-            metrics.mark_success(False, stripped)
+    response = ask_llm(
+        final_prompt,
+        LLM_MODEL,
+        metrics_service="chat",
+        metrics_operation="hybrid_rag",
+        metrics_extra=extras,
+    )
     return response
 
 # ----- RAG (stream)
@@ -583,27 +676,16 @@ def query_hybrid_rag_stream(
 
     metrics_prompt = _format_messages_for_metrics(combined_messages)
 
-    with LLMRunMetrics(
-        model=model,
-        prompt_text=metrics_prompt,
-        service="chat",
-        operation="hybrid_rag_stream",
-        extra=metrics_extra,
-    ) as metrics:
-        try:
-            for piece in delete_think_stream(
-                ask_llm_stream(
-                    prompt=None,  # usamos messages
-                    model=model,
-                    messages=combined_messages
-                )
-            ):
-                metrics.add_response_chunk(piece)
-                yield piece
-            metrics.mark_success(True)
-        except Exception as e:
-            error_text = f"\n❌ Erro ao contactar o LLM: {e}\n"
-            metrics.add_response_chunk(error_text)
-            metrics.mark_success(False, str(e))
-            yield error_text
+    for piece in delete_think_stream(
+        ask_llm_stream(
+            prompt=None,  # usamos messages
+            model=model,
+            messages=combined_messages,
+            metrics_service="chat",
+            metrics_operation="hybrid_rag_stream",
+            metrics_extra=metrics_extra,
+            metrics_prompt=metrics_prompt,
+        )
+    ):
+        yield piece
 
