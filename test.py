@@ -72,10 +72,15 @@ class MetricsTests(unittest.TestCase):
         ]
         fake_chroma_docs = [{"text": "[POLICY] Apenas admins podem aceder."}]
 
+        fake_llm_response = {
+            "message": {"content": "Resposta final"},
+            "done": True,
+        }
+
         with patch.object(rag_controller, "reformulate_for_es", return_value="{\"query\":{\"match_all\":{}}}"), \
             patch.object(rag_controller, "es_search", return_value=fake_es_docs), \
             patch.object(rag_controller, "chroma_search", return_value=fake_chroma_docs), \
-            patch.object(rag_controller, "ask_llm", return_value="Resposta final"):
+            patch.object(rag_controller.ollama, "chat", return_value=fake_llm_response):
             response = rag_controller.query_hybrid_rag(
                 "Existe algum log suspeito?",
                 max_es_logs=1,
