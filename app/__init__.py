@@ -2,6 +2,7 @@
 
 from datetime import timedelta, datetime
 import os
+from pathlib import Path
 from flask import Flask, jsonify, redirect, request, session, url_for
 from flask_login import current_user
 from apscheduler.schedulers.background import BackgroundScheduler
@@ -115,6 +116,4 @@ def create_app(config_class: type = Config) -> Flask:
     scheduler.add_job(job_wrapper, 'interval', minutes=5, id='detect_anomalies', replace_existing=False, max_instances=1, next_run_time=datetime.now() + timedelta(seconds=10))
     #scheduler.start() # Descomente para ativar o scheduler
 
-    #for token in delete_think_stream(ask_llm_stream("Escreve algo sobre programação.")):
-    #    print(token, end="", flush=True)
     return app
