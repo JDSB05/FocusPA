@@ -2,6 +2,7 @@
 from datetime import datetime
 from contextlib import nullcontext
 import os
+from pathlib import Path
 import re
 import json
 import requests
@@ -521,6 +522,21 @@ def chroma_search(query, top_k=5):
 # ===== Prompt =====
 def build_final_prompt(context_blocks: list[str], question: str) -> str:
     context = "\n\n---\n\n".join(context_blocks)
+        #################################
+    # Diretoria onde este ficheiro .py está
+    base_dir = Path(__file__).resolve().parent
+    print(f"[DEBUG] Diretoria base para log.txt: {base_dir}")
+    log_file = base_dir / "log.txt"
+    print(f"[DEBUG] Caminho completo do log.txt: {log_file}")
+    if log_file.exists():
+        with open(log_file, "r", encoding="utf-8") as f:
+            context = f.read()
+            print("[DEBUG] Usando log.txt como contexto (desenvolvimento)")
+        print("[DEBUG] Contexto do log.txt:")
+        
+    else:
+        print("[DEBUG] Nenhum log.txt encontrado, contexto padrão usado.")
+    #################################
     return f"""Contexto (logs e políticas relevantes, tens de responder baseando-te nas políticas fornecidas, as políticas estão depois dos logs):
 {context}
 
@@ -616,8 +632,9 @@ def query_hybrid_rag_stream(
     print(f"[INFO] Query reformulada (stream): {refined!r}")
 
     if is_nullish_query(refined):
-        yield "A pergunta é demasiado vaga para pesquisa. Especifica melhor (ex.: intervalo temporal, event_id, user.name)."
-        return
+        print("[INFO] Pergunta demasiado vaga, não há pesquisa.")
+        #yield "A pergunta é demasiado vaga para pesquisa. Especifica melhor (ex.: intervalo temporal, event_id, user.name)."
+        #return
 
     # ---- Elasticsearch ----
     es_limit, chroma_limit = get_context_limits(max_es_logs, max_chroma_chunks)
@@ -632,11 +649,14 @@ def query_hybrid_rag_stream(
 
     blocks = ctx["context_blocks"]
     if not blocks:
-        yield "Não encontrei contexto relevante no Elasticsearch nem no Chroma para responder."
-        return
+        print("[INFO] Nenhum contexto relevante encontrado.")
+        #yield "Não encontrei contexto relevante no Elasticsearch nem no Chroma para responder."
+        #return
 
     # ---- Mensagem SYSTEM com o contexto RAG ----
     context = ctx["context_text"]
+    context = build_final_prompt(blocks[:12], final_question)
+    print(f"[DEBUG] Contexto final para o LLM (stream): {context[:500]}...")
     system_ctx = (
         "Contexto (logs e políticas relevantes):\n"
         f"{context}\n\n"
