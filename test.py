@@ -23,6 +23,7 @@ import sys
 import types
 from contextlib import contextmanager
 from dataclasses import dataclass
+from datetime import datetime
 from itertools import product
 from pathlib import Path
 from typing import Iterable, Iterator, List, Optional, Tuple
@@ -60,6 +61,7 @@ atexit.register(requests_get_patcher.stop)
 
 from app.controllers import rag_controller
 from app.utils import metrics as metrics_utils
+from app.utils.others import ensure_model
 
 
 # ---------------------------------------------------------------------------
@@ -202,7 +204,16 @@ def run_single_experiment(
 ) -> RunResult:
     original_model = rag_controller.LLM_MODEL
     original_light = rag_controller.LLM_MODEL_LIGHT
+    prompt = ""
+    context_text = ""
+    logs_from_prompt: Optional[list] = None
+    expected_logs: Optional[list] = None
+    log_file = Path(rag_controller.__file__).resolve().parent / "log.txt"
     try:
+        ensure_model(model)
+        if light_model:
+            ensure_model(light_model)
+
         rag_controller.LLM_MODEL = model
         rag_controller.LLM_MODEL_LIGHT = light_model
 
@@ -232,6 +243,9 @@ def run_single_experiment(
             metrics_extra=metrics_extra,
         )
 
+        if response.strip().startswith("❌"):
+            print(f"[ERROR] Execução do LLM falhou: {response.strip()}")
+
         return RunResult(
             model=model,
             light_model=light_model,
@@ -241,6 +255,56 @@ def run_single_experiment(
             expected_logs=expected_logs,
             log_file=log_file,
             response=response.strip(),
+        )
+    except Exception as exc:
+        error_text = f"❌ Erro durante a execução do teste: {exc}"
+        print(f"[ERROR] {error_text}")
+
+        prompt_tokens = metrics_utils.count_tokens(prompt, model) if prompt else 0
+        context_tokens = metrics_utils.count_tokens(context_text, model) if context_text else 0
+
+        logger = metrics_utils.MetricsLogger(csv_path=metrics_path)
+        logger.log(
+            {
+                "timestamp": datetime.utcnow().isoformat(),
+                "service": "chat",
+                "operation": "rag_prompt_test",
+                "model": model,
+                "prompt_tokens": prompt_tokens,
+                "completion_tokens": 0,
+                "total_tokens": prompt_tokens,
+                "prompt_chars": len(prompt),
+                "completion_chars": 0,
+                "prompt_preview": _format_summary(prompt) if prompt else "",
+                "response_preview": _format_summary(error_text),
+                "duration_seconds": 0,
+                "tokens_per_second": 0,
+                "tokens_per_minute": 0,
+                "success": "no",
+                "error_message": str(exc),
+                "num_es_logs": log_limit,
+                "elastic_logs_limit": log_limit,
+                "num_chroma_chunks": 0,
+                "chroma_chunks_limit": 0,
+                "question_tokens": metrics_utils.count_tokens(question, model),
+                "question_chars": len(question),
+                "context_tokens": context_tokens,
+                "context_chars": len(context_text),
+                "mode": mode,
+                "light_model": light_model,
+                "log_limit": log_limit,
+            }
+        )
+
+        return RunResult(
+            model=model,
+            light_model=light_model,
+            log_limit=log_limit,
+            metrics_csv=metrics_path,
+            prompt_logs=logs_from_prompt,
+            expected_logs=expected_logs,
+            log_file=log_file,
+            response=error_text,
         )
     finally:
         rag_controller.LLM_MODEL = original_model
