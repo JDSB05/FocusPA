@@ -520,7 +520,7 @@ def chroma_search(query, top_k=5):
 
 
 # ===== Prompt =====
-def build_final_prompt(context_blocks: list[str], question: str) -> str:
+def build_final_prompt(context_blocks: list[str], question: str, num_objects: int = None) -> str:
     context = "\n\n---\n\n".join(context_blocks)
         #################################
     # Diretoria onde este ficheiro .py está
@@ -530,7 +530,16 @@ def build_final_prompt(context_blocks: list[str], question: str) -> str:
     print(f"[DEBUG] Caminho completo do log.txt: {log_file}")
     if log_file.exists():
         with open(log_file, "r", encoding="utf-8") as f:
-            context = f.read()
+            log_content = f.read()
+            try:
+                log_array = json.loads(log_content)
+                if isinstance(log_array, list) and num_objects is not None:
+                    log_array = log_array[:num_objects]
+                context = json.dumps(log_array, indent=2)
+                print(f"[DEBUG] Log.txt convertido em JSON com {len(log_array)} objetos.")
+            except:
+                context = log_content
+                
             print("[DEBUG] Usando log.txt como contexto (desenvolvimento)")
         print("[DEBUG] Contexto do log.txt:")
         
@@ -655,7 +664,7 @@ def query_hybrid_rag_stream(
 
     # ---- Mensagem SYSTEM com o contexto RAG ----
     context = ctx["context_text"]
-    context = build_final_prompt(blocks[:12], final_question)
+    context = build_final_prompt(blocks[:12], final_question, num_objects=20)
     print(f"[DEBUG] Contexto final para o LLM (stream): {context[:500]}...")
     system_ctx = (
         "Contexto (logs e políticas relevantes):\n"
