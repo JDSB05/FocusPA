@@ -21,12 +21,11 @@ import json
 import os
 import sys
 import types
-from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime
 from itertools import product
 from pathlib import Path
-from typing import Iterable, Iterator, List, Optional, Tuple
+from typing import Iterable, Optional, Tuple
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
@@ -84,39 +83,9 @@ def configure_metrics_path(path: Path | None) -> Path:
     return target
 
 
-# ---------------------------------------------------------------------------
-# Ollama stubbing so the metrics code can execute deterministically.
-# ---------------------------------------------------------------------------
-
-
 def _format_summary(content: str, limit: int = 120) -> str:
     cleaned = " ".join(content.split())
     return cleaned if len(cleaned) <= limit else cleaned[: limit - 1] + "…"
-
-
-def _fake_llm_response(model: str, prompt: str) -> str:
-    summary = _format_summary(prompt)
-    return (
-        f"[fake-{model}] A responder com base em {len(prompt.split())} tokens. "
-        f"Resumo do prompt: {summary}"
-    )
-
-
-@contextmanager
-def patched_ollama_chat() -> Iterator[None]:
-    def _chat(model: str, messages: List[dict], stream: bool = False, **_) -> Iterator[dict] | dict:
-        prompt_text = messages[-1]["content"] if messages else ""
-        reply = _fake_llm_response(model, prompt_text)
-        chunk = {"message": {"content": reply}, "done": True}
-        if stream:
-            def _generator() -> Iterator[dict]:
-                yield chunk
-
-            return _generator()
-        return chunk
-
-    with patch.object(rag_controller.ollama, "chat", side_effect=_chat):
-        yield
 
 
 # ---------------------------------------------------------------------------
@@ -386,23 +355,22 @@ def main(argv: Iterable[str] | None = None) -> int:
     metrics_path = Path(args.metrics).expanduser() if args.metrics else None
     metrics_path = configure_metrics_path(metrics_path)
 
-    with patched_ollama_chat():
-        if args.mode_or_model.lower() == "auto":
-            run_automatic_suite(args.question, metrics_path)
-            return 0
+    if args.mode_or_model.lower() == "auto":
+        run_automatic_suite(args.question, metrics_path)
+        return 0
 
-        if args.log_limit is None:
-            raise SystemExit("É necessário indicar o número de logs para o modo manual.")
+    if args.log_limit is None:
+        raise SystemExit("É necessário indicar o número de logs para o modo manual.")
 
-        light_model = args.light_model or rag_controller.LLM_MODEL_LIGHT
-        result = run_single_experiment(
-            model=args.mode_or_model,
-            light_model=light_model,
-            log_limit=args.log_limit,
-            question=args.question,
-            metrics_path=metrics_path,
-        )
-        print_result_summary(result)
+    light_model = args.light_model or rag_controller.LLM_MODEL_LIGHT
+    result = run_single_experiment(
+        model=args.mode_or_model,
+        light_model=light_model,
+        log_limit=args.log_limit,
+        question=args.question,
+        metrics_path=metrics_path,
+    )
+    print_result_summary(result)
     return 0
 
 
