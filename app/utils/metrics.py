@@ -40,6 +40,7 @@ BASE_FIELDS: tuple[str, ...] = (
     "service",
     "operation",
     "model",
+    "light_model",
     "prompt_tokens",
     "completion_tokens",
     "total_tokens",
@@ -206,6 +207,7 @@ class MetricsLogger:
     def _emit_console_log(self, row: Dict[str, Any]) -> None:
         msg = (
             "[LLM][{timestamp}] service={service} op={operation} model={model} "
+            "light={light_model} "
             "prompt_tokens={prompt_tokens} completion_tokens={completion_tokens} "
             "duration={duration_seconds}s tokens/s={tokens_per_second} "
             "es_logs={num_es_logs} chroma_chunks={num_chroma_chunks} success={success}"

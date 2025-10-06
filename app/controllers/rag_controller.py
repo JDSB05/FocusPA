@@ -242,7 +242,9 @@ def ask_llm(
         with metrics_cm as metrics_ctx:
             metrics_obj = metrics_ctx if isinstance(metrics_ctx, LLMRunMetrics) else None
             try:
-                # Chamada ao Ollama (lib Python)
+                # Realiza a chamada HTTP para o container do Ollama através do client Python.
+                # Este ponto envia a mensagem para o endpoint /api/chat exposto pelo serviço
+                # em execução (por padrão http://localhost:11434).
                 response = ollama.chat(
                     model=model,
                     messages=[{"role": "user", "content": prompt}],
