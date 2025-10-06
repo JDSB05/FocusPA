@@ -40,6 +40,7 @@ BASE_FIELDS: tuple[str, ...] = (
     "service",
     "operation",
     "model",
+    "light_model",
     "prompt_tokens",
     "completion_tokens",
     "total_tokens",
@@ -164,15 +165,49 @@ class MetricsLogger:
 
     def _write_row(self, row: Dict[str, Any]) -> None:
         file_exists = self.csv_path.exists()
+        existing_rows: list[Dict[str, Any]] = []
+        existing_fields: list[str] = []
+
+        if file_exists:
+            with self.csv_path.open("r", newline="", encoding="utf-8") as fh:
+                reader = csv.DictReader(fh)
+                existing_fields = list(reader.fieldnames or [])
+                existing_rows = list(reader)
+
+        # Ensure we preserve any fields already on disk even if the current
+        # logger instance was created after they were written.
+        for field in existing_fields:
+            if field not in self._csv_fields:
+                self._csv_fields.append(field)
+
+        # Build the final list of field names keeping the original order for
+        # previously persisted columns and appending any new metadata columns
+        # discovered for the current row.
+        final_fields: list[str] = list(existing_fields)
+        for field in self._csv_fields:
+            if field not in final_fields:
+                final_fields.append(field)
+
+        fields_match = file_exists and existing_fields == final_fields and bool(final_fields)
+        self._csv_fields = final_fields
+
+        if not fields_match:
+            with self.csv_path.open("w", newline="", encoding="utf-8") as fh:
+                writer = csv.DictWriter(fh, fieldnames=self._csv_fields)
+                writer.writeheader()
+                for existing_row in existing_rows:
+                    writer.writerow({field: existing_row.get(field, "") for field in self._csv_fields})
+                writer.writerow({field: row.get(field, "") for field in self._csv_fields})
+            return
+
         with self.csv_path.open("a", newline="", encoding="utf-8") as fh:
             writer = csv.DictWriter(fh, fieldnames=self._csv_fields)
-            if not file_exists:
-                writer.writeheader()
-            writer.writerow(row)
+            writer.writerow({field: row.get(field, "") for field in self._csv_fields})
 
     def _emit_console_log(self, row: Dict[str, Any]) -> None:
         msg = (
             "[LLM][{timestamp}] service={service} op={operation} model={model} "
+            "light={light_model} "
             "prompt_tokens={prompt_tokens} completion_tokens={completion_tokens} "
             "duration={duration_seconds}s tokens/s={tokens_per_second} "
             "es_logs={num_es_logs} chroma_chunks={num_chroma_chunks} success={success}"
