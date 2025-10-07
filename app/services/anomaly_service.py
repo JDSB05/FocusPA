@@ -8,6 +8,7 @@ from datetime import datetime, timedelta
 from ..extensions import db
 from ..model import Anomaly
 from app.controllers.rag_controller import es_search, strip_json_markdown, ask_llm, _g
+from app.utils.metrics import LLMRunMetrics, count_tokens
 from app.utils.policy import build_policy_context_for_prompt
 
 if not load_dotenv(os.path.join(os.path.dirname(__file__), '../.env')):
@@ -15,7 +16,7 @@ if not load_dotenv(os.path.join(os.path.dirname(__file__), '../.env')):
 
 LLM_MODEL = os.getenv("LLM_MODEL", "deepseek-r1")
 
-def classify_events_with_rag(question: str, context: str) -> str:
+def classify_events_with_rag(question: str, context: str, events_count: int | None = None) -> str:
     prompt = f"""
 Classifica os eventos da seguinte questão de segurança: {question}
 Com base no seguinte contexto: {context}
@@ -40,32 +41,50 @@ Regras:
 - Usa o contexto fornecido (admins e diretórios) apenas para priorizar/filtrar risco — não faças enforcement.
 """
     print(prompt)
-    try:
-        print("[Classificação] A enviar prompt ao LLM...")
-        text = ask_llm(prompt, LLM_MODEL).strip()
-        text = strip_json_markdown(text)
+    model = "deepseek-coder-v2"
+    extras = {
+        "events_considered": events_count,
+        "question_tokens": count_tokens(question, model),
+        "context_tokens": count_tokens(context, model),
+        "question_chars": len(question),
+        "context_chars": len(context),
+    }
 
-        if text.lower() == "null":
+    with LLMRunMetrics(
+        model=model,
+        prompt_text=prompt,
+        service="anomaly",
+        operation="classify_events",
+        extra=extras,
+    ) as metrics:
+        try:
+            print("[Classificação] A enviar prompt ao LLM...")
+            text = ask_llm(prompt, model).strip()
+            text = strip_json_markdown(text)
+            metrics.set_response_text(text)
+
+            if text.lower() == "null":
+                return "null"
+
+            parsed = json.loads(text)
+
+            if isinstance(parsed, list):
+                valid = all(
+                    isinstance(e, dict) and {"id", "description", "severity"} <= set(e.keys())
+                    for e in parsed
+                )
+                if valid:
+                    return json.dumps(parsed)
+                logger.warning("[Classificação] Lista inválida recebida.")
+                return "null"
+
+            logger.warning(f"[Classificação] Tipo inesperado: {type(parsed)}")
             return "null"
 
-        parsed = json.loads(text)
-
-        if isinstance(parsed, list):
-            valid = all(
-                isinstance(e, dict) and {"id", "description", "severity"} <= set(e.keys())
-                for e in parsed
-            )
-            if valid:
-                return json.dumps(parsed)
-            print("[Classificação] Lista inválida recebida.")
+        except Exception as e:
+            metrics.mark_success(False, str(e))
+            logger.error(f"[Classificação] Erro: {e}")
             return "null"
-
-        print(f"[Classificação] Tipo inesperado: {type(parsed)}")
-        return "null"
-
-    except Exception as e:
-        print(f"[Classificação] Erro: {e}")
-        return "null"
 
 
 def fetch_recent_events(max_events: int = 100, minutes: int = 15):
@@ -160,7 +179,7 @@ Considera o seguinte contexto para a avaliação (apenas para te orientar, não 
 """
     
     print("[AnomalyService] A enviar prompt ao LLM para classificação...")
-    raw = classify_events_with_rag(policy_question, policy_context)
+    raw = classify_events_with_rag(policy_question, policy_context, events_count=len(event_payload))
     if raw == "null":
         print("[AnomalyService] Nenhuma anomalia detectada pelo LLM.")
         return

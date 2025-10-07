@@ -1,6 +1,8 @@
 # /controllers/rag_controller.py
 from datetime import datetime
+from contextlib import nullcontext
 import os
+from pathlib import Path
 import re
 import json
 import requests
@@ -12,6 +14,7 @@ from sentence_transformers import SentenceTransformer
 from app.services.embeddings import embed as embed_fn
 from app.services.chroma_client import chroma
 from app.services.elastic import es
+from app.utils.metrics import LLMRunMetrics, count_tokens
 from dotenv import load_dotenv
 
 # ===== Config =====
@@ -34,6 +37,75 @@ ollama = Client(
 
 # ===== Embeddings =====
 embedder = SentenceTransformer(EMBED_MODEL)
+
+# ===== Metrics helpers =====
+
+def _parse_limit(value, default: int) -> int:
+    try:
+        if value is None:
+            return default
+        return max(int(value), 0)
+    except (TypeError, ValueError):
+        return default
+
+
+def get_context_limits(
+    max_es_logs: int | None = None,
+    max_chroma_chunks: int | None = None,
+) -> tuple[int, int]:
+    """Resolve how many ES logs and Chroma chunks should be used."""
+
+    default_es = _parse_limit(os.environ.get("RAG_ES_LOG_LIMIT"), 20)
+    default_chroma = _parse_limit(os.environ.get("RAG_CHROMA_LIMIT"), 5)
+
+    es_limit = _parse_limit(max_es_logs, default_es)
+    chroma_limit = _parse_limit(max_chroma_chunks, default_chroma)
+    return es_limit, chroma_limit
+
+
+def prepare_rag_context(
+    *,
+    natural_question: str,
+    refined_query: str,
+    es_limit: int,
+    chroma_limit: int,
+    time_from: str | None = None,
+    time_to: str | None = None,
+) -> dict:
+    """Fetch context from Elasticsearch and Chroma respecting the limits."""
+
+    es_blocks: list[str] = []
+    if es_limit > 0:
+        es_docs = es_search(refined_query, time_from=time_from, time_to=time_to, size=es_limit)
+        es_blocks = [
+            f"@timestamp={d.get('@timestamp')} event.code={_g(d,'event.code')} "
+            f"winlog.event_id={_g(d,'winlog.event_id')} user.name={_g(d,'user.name')}\n{d.get('message','')}"
+            for d in es_docs
+        ]
+
+    chroma_blocks: list[str] = []
+    if chroma_limit > 0:
+        chroma_pairs = chroma_search(natural_question, top_k=chroma_limit)
+        chroma_blocks = [f"[POLICY]\n{p['text']}" for p in chroma_pairs if p.get("text")]
+
+    context_blocks = es_blocks + chroma_blocks
+    context_text = "\n\n---\n\n".join(context_blocks[:12])
+
+    return {
+        "es_blocks": es_blocks,
+        "chroma_blocks": chroma_blocks,
+        "context_blocks": context_blocks,
+        "context_text": context_text,
+    }
+
+
+def _format_messages_for_metrics(messages: list[dict]) -> str:
+    parts = []
+    for msg in messages:
+        role = (msg.get("role") or "user").lower()
+        content = msg.get("content") or ""
+        parts.append(f"{role}: {content}")
+    return "\n\n".join(parts)
 
 # ===== Util =====
 def delete_think(text: str) -> str:
@@ -139,36 +211,85 @@ def _g(d, path, default=None):
 
 # ===== LLM (não-stream, compat) =====
 
-def ask_llm(prompt: str, model: str) -> str:
+def ask_llm(
+    prompt: str,
+    model: str,
+    *,
+    metrics_service: str | None = None,
+    metrics_operation: str | None = None,
+    metrics_extra: dict | None = None,
+    metrics_prompt: str | None = None,
+) -> str:
+    metrics_obj: LLMRunMetrics | None = None
     try:
         print(f"[ask_llm] Enviando prompt para modelo '{model}'...")
         prompt = prompt.lstrip("\u0001")
 
-        # Chamada ao Ollama (lib Python)
-        response = ollama.chat(
-            model=model,
-            messages=[{"role": "user", "content": prompt}],
+        extra = dict(metrics_extra or {})
+        metrics_prompt_text = metrics_prompt or prompt
+        metrics_cm = (
+            LLMRunMetrics(
+                model=model,
+                prompt_text=metrics_prompt_text,
+                service=metrics_service,
+                operation=metrics_operation,
+                extra=extra,
+            )
+            if metrics_service and metrics_operation
+            else nullcontext()
         )
 
-        # Extrair a resposta do LLM
-        if "message" in response and "content" in response["message"]:
-            answer = response["message"]["content"]
-        elif "response" in response:
-            answer = response["response"]
-        else:
-            raise RuntimeError(f"Resposta inesperada do LLM: {response}")
+        with metrics_cm as metrics_ctx:
+            metrics_obj = metrics_ctx if isinstance(metrics_ctx, LLMRunMetrics) else None
+            try:
+                # Realiza a chamada HTTP para o container do Ollama através do client Python.
+                # Este ponto envia a mensagem para o endpoint /api/chat exposto pelo serviço
+                # em execução (por padrão http://localhost:11434).
+                response = ollama.chat(
+                    model=model,
+                    messages=[{"role": "user", "content": prompt}],
+                )
 
-        print(f"[ask_llm] Resposta recebida do LLM: {answer}...")
-        return delete_think(answer)
+                # Extrair a resposta do LLM
+                if "message" in response and "content" in response["message"]:
+                    answer = response["message"]["content"]
+                elif "response" in response:
+                    answer = response["response"]
+                else:
+                    raise RuntimeError(f"Resposta inesperada do LLM: {response}")
+
+                print(f"[ask_llm] Resposta recebida do LLM: {answer[:80]}...")
+                cleaned = delete_think(answer)
+                if metrics_obj:
+                    metrics_obj.set_response_text(cleaned)
+                    if cleaned.strip().startswith("❌"):
+                        metrics_obj.mark_success(False, cleaned.strip())
+                return cleaned
+
+            except Exception as e:
+                error_text = f"❌ Erro ao contactar o LLM: {e}"
+                if metrics_obj:
+                    metrics_obj.set_response_text(error_text)
+                    metrics_obj.mark_success(False, str(e))
+                return error_text
 
     except Exception as e:
-        return f"❌ Erro ao contactar o LLM: {e}"
+        error_text = f"❌ Erro ao contactar o LLM: {e}"
+        if metrics_obj:
+            metrics_obj.set_response_text(error_text)
+            metrics_obj.mark_success(False, str(e))
+        return error_text
 
 # ===== LLM (stream) =====
 def ask_llm_stream(
     prompt: str | None = None,
     model: str = LLM_MODEL,
-    messages: list[dict] | None = None
+    messages: list[dict] | None = None,
+    *,
+    metrics_service: str | None = None,
+    metrics_operation: str | None = None,
+    metrics_extra: dict | None = None,
+    metrics_prompt: str | None = None,
 ):
     """
     Stream de resposta do LLM via biblioteca ollama.
@@ -176,6 +297,8 @@ def ask_llm_stream(
       [{"role":"system"|"user"|"assistant", "content":"..."}]
     Caso contrário, usa um único prompt como mensagem de utilizador.
     """
+    metrics: LLMRunMetrics | None = None
+    collected_chunks: list[str] = []
     try:
         # Normaliza mensagens vindas do browser (se existirem)
         if messages and isinstance(messages, list):
@@ -196,26 +319,74 @@ def ask_llm_stream(
                 raise ValueError("ask_llm_stream: precisa de `prompt` ou `messages`.")
             msgs = [{"role": "user", "content": prompt.lstrip("\u0001")}]
 
-        # Streaming com Ollama
-        stream = ollama.chat(
-            model=model,
-            messages=msgs,
-            stream=True,
-            think=False
+        metrics_prompt_text = metrics_prompt
+        if metrics_prompt_text is None:
+            if messages and isinstance(messages, list):
+                metrics_prompt_text = _format_messages_for_metrics(msgs)
+            else:
+                metrics_prompt_text = prompt or ""
+
+        extra = dict(metrics_extra or {})
+        metrics_cm = (
+            LLMRunMetrics(
+                model=model,
+                prompt_text=metrics_prompt_text,
+                service=metrics_service,
+                operation=metrics_operation,
+                extra=extra,
+            )
+            if metrics_service and metrics_operation
+            else nullcontext()
         )
 
-        for chunk in stream:
-            # Cada chunk pode vir como {"message": {"content": "..."}}
-            # ou (alguns modelos) {"response": "..."}
-            content = (chunk.get("message") or {}).get("content") or chunk.get("response")
-            if content:
-                yield content
-            if chunk.get("done"):
-                break
+        with metrics_cm as metrics_ctx:
+            metrics = metrics_ctx if isinstance(metrics_ctx, LLMRunMetrics) else None
+            collected_chunks = []
+            try:
+                # Streaming com Ollama
+                stream = ollama.chat(
+                    model=model,
+                    messages=msgs,
+                    stream=True,
+                    think=False
+                )
+
+                for chunk in stream:
+                    # Cada chunk pode vir como {"message": {"content": "..."}}
+                    # ou (alguns modelos) {"response": "..."}
+                    content = (chunk.get("message") or {}).get("content") or chunk.get("response")
+                    if content:
+                        collected_chunks.append(content)
+                        yield content
+                    if chunk.get("done"):
+                        break
+
+            except Exception as e:
+                print(f"[ERROR] ask_llm_stream: {e}")
+                error_text = f"\n❌ Erro ao contactar o LLM: {e}\n"
+                collected_chunks.append(error_text)
+                if metrics:
+                    cleaned = delete_think("".join(collected_chunks))
+                    metrics.set_response_text(cleaned)
+                    metrics.mark_success(False, str(e))
+                yield error_text
+                return
+
+            if metrics:
+                cleaned = delete_think("".join(collected_chunks))
+                metrics.set_response_text(cleaned)
+                metrics.mark_success(True)
 
     except Exception as e:
-        print(f"[ERROR] ask_llm_stream: {e}")   
-        yield f"\n❌ Erro ao contactar o LLM: {e}\n"
+        print(f"[ERROR] ask_llm_stream: {e}")
+        error_text = f"\n❌ Erro ao contactar o LLM: {e}\n"
+        collected_chunks.append(error_text)
+        if metrics:
+            cleaned = delete_think("".join(collected_chunks))
+            metrics.set_response_text(cleaned)
+            metrics.mark_success(False, str(e))
+        yield error_text
+        return
 
 # ===== Reformulação =====
 def reformulate_for_es(question: str) -> str:
@@ -352,8 +523,32 @@ def chroma_search(query, top_k=5):
 
 
 # ===== Prompt =====
-def build_final_prompt(context_blocks: list[str], question: str) -> str:
+def build_final_prompt(context_blocks: list[str], question: str, num_objects: int = None) -> str:
     context = "\n\n---\n\n".join(context_blocks)
+        #################################
+    # Diretoria onde este ficheiro .py está
+    base_dir = Path(__file__).resolve().parent
+    print(f"[DEBUG] Diretoria base para log.txt: {base_dir}")
+    log_file = base_dir / "log.txt"
+    print(f"[DEBUG] Caminho completo do log.txt: {log_file}")
+    if log_file.exists():
+        with open(log_file, "r", encoding="utf-8") as f:
+            log_content = f.read()
+            try:
+                log_array = json.loads(log_content)
+                if isinstance(log_array, list) and num_objects is not None:
+                    log_array = log_array[:num_objects]
+                context = json.dumps(log_array, indent=2)
+                print(f"[DEBUG] Log.txt convertido em JSON com {len(log_array)} objetos.")
+            except:
+                context = log_content
+                
+            print("[DEBUG] Usando log.txt como contexto (desenvolvimento)")
+        print("[DEBUG] Contexto do log.txt:")
+        
+    else:
+        print("[DEBUG] Nenhum log.txt encontrado, contexto padrão usado.")
+    #################################
     return f"""Contexto (logs e políticas relevantes, tens de responder baseando-te nas políticas fornecidas, as políticas estão depois dos logs):
 {context}
 
@@ -367,27 +562,53 @@ Pergunta original:
 Resposta:"""
 
 # ===== RAG (compat: não stream) =====
-def query_hybrid_rag(question: str, time_from: str | None = None, time_to: str | None = None) -> str:
+def query_hybrid_rag(
+    question: str,
+    time_from: str | None = None,
+    time_to: str | None = None,
+    max_es_logs: int | None = None,
+    max_chroma_chunks: int | None = None,
+) -> str:
     refined = reformulate_for_es(question)
     print(f"[INFO] Query reformulada: {refined!r}")
     if is_nullish_query(refined):
         print("[INFO] Pergunta demasiado vaga, não há pesquisa.")
         return "A pergunta é demasiado vaga para pesquisa. Especifica melhor (ex.: intervalo temporal, event_id, user.name)."
 
-    es_docs = es_search(refined, time_from=time_from, time_to=time_to, size=20)
-    es_blocks = [
-        f"@timestamp={d.get('@timestamp')} event.code={_g(d,'event.code')} "
-        f"winlog.event_id={_g(d,'winlog.event_id')} user.name={_g(d,'user.name')}\n{d.get('message','')}"
-        for d in es_docs
-    ]
-    chroma_pairs = chroma_search(question, top_k=5)  # usar pergunta natural
-    chroma_blocks = [f"[POLICY]\n{p['text']}" for p in chroma_pairs if p.get("text")]
+    es_limit, chroma_limit = get_context_limits(max_es_logs, max_chroma_chunks)
+    ctx = prepare_rag_context(
+        natural_question=question,
+        refined_query=refined,
+        es_limit=es_limit,
+        chroma_limit=chroma_limit,
+        time_from=time_from,
+        time_to=time_to,
+    )
 
-    blocks = es_blocks + chroma_blocks
+    blocks = ctx["context_blocks"]
     if not blocks:
         return "Não encontrei contexto relevante no Elasticsearch nem no Chroma para responder."
+
     final_prompt = build_final_prompt(blocks[:12], question)
-    return ask_llm(final_prompt, LLM_MODEL)
+    extras = {
+        "num_es_logs": len(ctx["es_blocks"]),
+        "num_chroma_chunks": len(ctx["chroma_blocks"]),
+        "elastic_logs_limit": es_limit,
+        "chroma_chunks_limit": chroma_limit,
+        "question_tokens": count_tokens(question, LLM_MODEL),
+        "question_chars": len(question),
+        "context_tokens": count_tokens(ctx["context_text"], LLM_MODEL),
+        "context_chars": len(ctx["context_text"]),
+    }
+
+    response = ask_llm(
+        final_prompt,
+        LLM_MODEL,
+        metrics_service="chat",
+        metrics_operation="hybrid_rag",
+        metrics_extra=extras,
+    )
+    return response
 
 # ----- RAG (stream)
 def query_hybrid_rag_stream(
@@ -396,6 +617,8 @@ def query_hybrid_rag_stream(
     time_to: str | None = None,
     messages: list[dict] | None = None,   # histórico do browser
     model: str = LLM_MODEL,                # usa o teu default
+    max_es_logs: int | None = None,
+    max_chroma_chunks: int | None = None,
 ):
     """
     Constrói contexto via RAG (ES + Chroma), injeta como mensagem SYSTEM
@@ -425,27 +648,26 @@ def query_hybrid_rag_stream(
     #     return
 
     # ---- Elasticsearch ----
-    if is_nullish_query(refined):
-        es_blocks = []
-    else:
-        es_docs = es_search(refined, time_from=time_from, time_to=time_to, size=20)
-        es_blocks = [
-            f"@timestamp={d.get('@timestamp')} event.code={_g(d,'event.code')} "
-            f"winlog.event_id={_g(d,'winlog.event_id')} user.name={_g(d,'user.name')}\n{d.get('message','')}"
-            for d in es_docs
-        ]
+    es_limit, chroma_limit = get_context_limits(max_es_logs, max_chroma_chunks)
+    ctx = prepare_rag_context(
+        natural_question=final_question,
+        refined_query=refined,
+        es_limit=es_limit,
+        chroma_limit=chroma_limit,
+        time_from=time_from,
+        time_to=time_to,
+    )
 
-    # ---- Chroma (políticas) ----
-    chroma_pairs = chroma_search(final_question, top_k=5)  # usa pergunta natural
-    chroma_blocks = [f"[POLICY]\n{p['text']}" for p in chroma_pairs if p.get("text")]
-
-    blocks = es_blocks + chroma_blocks
+    blocks = ctx["context_blocks"]
     if not blocks:
-        yield "Não encontrei contexto relevante no Elasticsearch nem no Chroma para responder."
-        return
+        print("[INFO] Nenhum contexto relevante encontrado.")
+        #yield "Não encontrei contexto relevante no Elasticsearch nem no Chroma para responder."
+        #return
 
     # ---- Mensagem SYSTEM com o contexto RAG ----
-    context = "\n\n---\n\n".join(blocks[:12])
+    context = ctx["context_text"]
+    context = build_final_prompt(blocks[:12], final_question, num_objects=20)
+    print(f"[DEBUG] Contexto final para o LLM (stream): {context[:500]}...")
     system_ctx = (
         "Contexto (logs e políticas relevantes):\n"
         f"{context}\n\n"
@@ -472,15 +694,29 @@ def query_hybrid_rag_stream(
     # ---- Compose mensagens para o LLM (SYSTEM + histórico do browser) ----
     combined_messages = [{"role": "system", "content": system_ctx}] + norm_msgs
 
-    # ---- Chamada ao LLM em stream (com limpeza do <think> se aplicares) ----
-    try:
-        for piece in delete_think_stream(
-            ask_llm_stream(
-                prompt=None,  # usamos messages
-                model=model,
-                messages=combined_messages
-            )
-        ):
-            yield piece
-    except Exception as e:
-        yield f"\n❌ Erro ao contactar o LLM: {e}\n"
+    metrics_extra = {
+        "num_es_logs": len(ctx["es_blocks"]),
+        "num_chroma_chunks": len(ctx["chroma_blocks"]),
+        "elastic_logs_limit": es_limit,
+        "chroma_chunks_limit": chroma_limit,
+        "question_tokens": count_tokens(final_question, model),
+        "question_chars": len(final_question),
+        "context_tokens": count_tokens(context, model),
+        "context_chars": len(context),
+    }
+
+    metrics_prompt = _format_messages_for_metrics(combined_messages)
+
+    for piece in delete_think_stream(
+        ask_llm_stream(
+            prompt=None,  # usamos messages
+            model=model,
+            messages=combined_messages,
+            metrics_service="chat",
+            metrics_operation="hybrid_rag_stream",
+            metrics_extra=metrics_extra,
+            metrics_prompt=metrics_prompt,
+        )
+    ):
+        yield piece
+

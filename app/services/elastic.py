@@ -17,7 +17,9 @@ from elasticsearch import Elasticsearch
 from datetime import datetime, timedelta
 import random
 
-def create_fake_winlogs():
+def create_fake_winlogs(count: int = 5):
+    """Insert ``count`` synthetic Windows logs into Elasticsearch."""
+
     es = get_client()
 
     # índice diário no formato do Winlogbeat
@@ -34,8 +36,13 @@ def create_fake_winlogs():
     levels = ["information", "warning", "error"]
     now = datetime.utcnow()
 
+    try:
+        iterations = max(int(count), 0)
+    except (TypeError, ValueError):
+        iterations = 0
+
     actions = []
-    for i in range(5):
+    for i in range(iterations):
         doc = {
             "@timestamp": (now - timedelta(minutes=i * 10)).isoformat() + "Z",
             "message": random.choice(descriptions),

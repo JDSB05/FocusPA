@@ -7,4 +7,4 @@ app/utils/__pycache__/
 chroma_db/
 uploads/
 app/policy.json
-.vscode/
+metrics/llm_metrics.csv
