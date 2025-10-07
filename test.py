@@ -25,6 +25,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from itertools import product
 from pathlib import Path
+from time import perf_counter
 from typing import Iterable, Optional, Tuple
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
@@ -72,7 +73,35 @@ DEFAULT_QUESTION = (
 )
 DEFAULT_METRICS_PATH = metrics_utils.DEFAULT_CSV_PATH
 AUTO_MODELS = ["gpt-oss:120b", "deepseek-r1:8b", "gemma3:4b", "qwen3:4b"]
-AUTO_LOG_LIMITS = [5, 10, 15, 20, 25]
+AUTO_LOG_LIMITS = [5, 25, 50]
+
+POLICY = {
+    "id": "CM-ENUM-001",
+    "name": "Controlo de abusos no Gestor de Credenciais",
+    "description": (
+        "Monitoriza acessos ao Gestor de Credenciais do Windows e sinaliza padrões "
+        "de leitura abusiva."
+    ),
+    "rules": [
+        {
+            "id": "ENUM-SPAM",
+            "description": (
+                "Mais de 5 eventos 'Enumerar Credenciais' (event.code 5379) pelo mesmo "
+                "utilizador e alvo num intervalo de 10 minutos são considerados anomalia."
+            ),
+            "logic": "Contar as ocorrências de 5379 por utilizador+alvo numa janela móvel de 10 minutos.",
+        },
+        {
+            "id": "CRYPTO-NORMAL",
+            "description": (
+                "Eventos criptográficos 5061 com ReturnCode 0x0 são operações legítimas e não são anomalia."
+            ),
+        },
+    ],
+    "anomaly_definition": (
+        "Considera-se anomalia qualquer log marcado com 'is_anomaly': true porque excede o limiar definido nas regras."
+    ),
+}
 
 
 def configure_metrics_path(path: Path | None) -> Path:
@@ -117,6 +146,10 @@ def _parse_logs_from_prompt(prompt: str) -> Tuple[Optional[list], str]:
         parsed = json.loads(context)
         if isinstance(parsed, list):
             return parsed, context
+        if isinstance(parsed, dict):
+            logs = parsed.get("logs")
+            if isinstance(logs, list):
+                return logs, context
     except json.JSONDecodeError:
         pass
     return None, context
@@ -136,6 +169,62 @@ def _expected_logs(limit: int) -> Tuple[Optional[list], Path]:
     return None, log_file
 
 
+def _build_context_payload(logs: list) -> dict:
+    return {"policy": POLICY, "logs": logs}
+
+
+def _build_prompt(question: str, context_payload: dict) -> Tuple[str, str]:
+    context_text = json.dumps(context_payload, indent=2, ensure_ascii=False)
+    prompt = f"""Contexto (logs e políticas relevantes, tens de responder baseando-te nas políticas fornecidas, as políticas estão depois dos logs):
+{context_text}
+
+Tarefa:
+Analisa os logs fornecidos aplicando rigorosamente as regras descritas em policy.rules.
+Responde exclusivamente em JSON com a seguinte estrutura:
+{{
+  "detected_anomalies": <numero inteiro>,
+  "anomalies": [
+    {{"index": <indice do log na lista 'logs'>, "reason": "..."}}
+  ],
+  "explanation": "Resumo técnico muito curto"
+}}
+O campo "detected_anomalies" deve indicar quantos registos cumprem os critérios de anomalia definidos pela política. Evita texto fora do JSON.
+Hoje é {datetime.utcnow().isoformat()}Z.
+
+Pergunta original:
+{question}
+
+Resposta:"""
+    return prompt, context_text
+
+
+def _count_anomalies(logs: Optional[list]) -> int:
+    if not isinstance(logs, list):
+        return 0
+    return sum(1 for entry in logs if isinstance(entry, dict) and entry.get("is_anomaly"))
+
+
+def _extract_detected_anomalies(response: str) -> Optional[int]:
+    text = response.strip()
+    start = text.find("{")
+    end = text.rfind("}")
+    if start == -1 or end == -1 or end <= start:
+        return None
+    candidate = text[start : end + 1]
+    try:
+        parsed = json.loads(candidate)
+    except json.JSONDecodeError:
+        return None
+    value = parsed.get("detected_anomalies")
+    if isinstance(value, bool):
+        return int(value)
+    if isinstance(value, (int, float)):
+        return int(value)
+    if isinstance(value, str) and value.strip().isdigit():
+        return int(value.strip())
+    return None
+
+
 @dataclass
 class RunResult:
     model: str
@@ -146,6 +235,9 @@ class RunResult:
     expected_logs: Optional[list]
     log_file: Path
     response: str
+    detected_anomalies: Optional[int]
+    actual_anomalies: int
+    precision: Optional[float]
 
     def is_log_match(self) -> bool:
         return self.prompt_logs == self.expected_logs if self.expected_logs is not None else True
@@ -178,6 +270,9 @@ def run_single_experiment(
     logs_from_prompt: Optional[list] = None
     expected_logs: Optional[list] = None
     log_file = Path(rag_controller.__file__).resolve().parent / "log.txt"
+    detected_anomalies: Optional[int] = None
+    actual_anomalies = 0
+    precision: Optional[float] = None
     try:
         ensure_model(model)
         if light_model:
@@ -186,30 +281,87 @@ def run_single_experiment(
         rag_controller.LLM_MODEL = model
         rag_controller.LLM_MODEL_LIGHT = light_model
 
-        prompt = rag_controller.build_final_prompt([], question, num_objects=log_limit)
-        logs_from_prompt, context_text = _parse_logs_from_prompt(prompt)
         expected_logs, log_file = _expected_logs(log_limit)
+        logs_for_prompt = expected_logs or []
+        context_payload = _build_context_payload(logs_for_prompt)
+        prompt, context_text = _build_prompt(question, context_payload)
+        logs_from_prompt, _ = _parse_logs_from_prompt(prompt)
 
-        metrics_extra = {
-            "num_es_logs": log_limit,
-            "num_chroma_chunks": 0,
-            "elastic_logs_limit": log_limit,
-            "chroma_chunks_limit": 0,
-            "question_tokens": metrics_utils.count_tokens(question, model),
-            "context_tokens": metrics_utils.count_tokens(context_text, model),
-            "question_chars": len(question),
-            "context_chars": len(context_text),
-            "light_model": light_model,
-            "log_limit": log_limit,
-            "mode": mode,
-        }
+        question_tokens = metrics_utils.count_tokens(question, model)
+        context_tokens = metrics_utils.count_tokens(context_text, model)
+        prompt_tokens = metrics_utils.count_tokens(prompt, model)
 
+        start_time = perf_counter()
         response = rag_controller.ask_llm(
             prompt,
             model,
-            metrics_service="chat",
-            metrics_operation="rag_prompt_test",
-            metrics_extra=metrics_extra,
+            metrics_service=None,
+            metrics_operation=None,
+        )
+        duration = max(perf_counter() - start_time, 0.0)
+
+        completion_tokens = metrics_utils.count_tokens(response, model)
+        total_tokens = prompt_tokens + completion_tokens
+
+        detected_anomalies = _extract_detected_anomalies(response)
+        actual_anomalies = _count_anomalies(logs_for_prompt)
+        if detected_anomalies is not None and actual_anomalies > 0:
+            precision = round((detected_anomalies / actual_anomalies) * 100, 2)
+        elif detected_anomalies == 0 and actual_anomalies == 0:
+            precision = 100.0
+
+        metrics_logger = metrics_utils.MetricsLogger(csv_path=metrics_path)
+        success = "yes"
+        error_message = ""
+        if response.strip().startswith("❌"):
+            success = "no"
+            error_message = response.strip()
+
+        metrics_logger.log(
+            {
+                "timestamp": datetime.utcnow().isoformat(),
+                "service": "chat",
+                "operation": "rag_prompt_test",
+                "model": model,
+                "light_model": light_model,
+                "prompt_tokens": prompt_tokens,
+                "completion_tokens": completion_tokens,
+                "total_tokens": total_tokens,
+                "prompt_chars": len(prompt),
+                "completion_chars": len(response),
+                "duration_seconds": round(duration, 3),
+                "tokens_per_second": round(
+                    completion_tokens / duration, 3
+                )
+                if duration > 0
+                else 0,
+                "tokens_per_minute": round(
+                    (completion_tokens / duration) * 60, 3
+                )
+                if duration > 0
+                else 0,
+                "num_es_logs": log_limit,
+                "num_chroma_chunks": 0,
+                "elastic_logs_limit": log_limit,
+                "chroma_chunks_limit": 0,
+                "events_considered": len(logs_for_prompt),
+                "question_tokens": question_tokens,
+                "context_tokens": context_tokens,
+                "question_chars": len(question),
+                "context_chars": len(context_text),
+                "prompt_preview": _format_summary(prompt),
+                "response_preview": _format_summary(response),
+                "success": success,
+                "error_message": error_message,
+                "light_model": light_model,
+                "log_limit": log_limit,
+                "mode": mode,
+                "actual_anomalies": actual_anomalies,
+                "detected_anomalies": detected_anomalies
+                if detected_anomalies is not None
+                else "",
+                "precision": precision if precision is not None else "",
+            }
         )
 
         if response.strip().startswith("❌"):
@@ -224,6 +376,9 @@ def run_single_experiment(
             expected_logs=expected_logs,
             log_file=log_file,
             response=response.strip(),
+            detected_anomalies=detected_anomalies,
+            actual_anomalies=actual_anomalies,
+            precision=precision,
         )
     except Exception as exc:
         error_text = f"❌ Erro durante a execução do teste: {exc}"
@@ -239,6 +394,7 @@ def run_single_experiment(
                 "service": "chat",
                 "operation": "rag_prompt_test",
                 "model": model,
+                "light_model": light_model,
                 "prompt_tokens": prompt_tokens,
                 "completion_tokens": 0,
                 "total_tokens": prompt_tokens,
@@ -260,8 +416,11 @@ def run_single_experiment(
                 "context_tokens": context_tokens,
                 "context_chars": len(context_text),
                 "mode": mode,
-                "light_model": light_model,
                 "log_limit": log_limit,
+                "events_considered": len(expected_logs) if isinstance(expected_logs, list) else 0,
+                "actual_anomalies": actual_anomalies,
+                "detected_anomalies": detected_anomalies if detected_anomalies is not None else "",
+                "precision": precision if precision is not None else "",
             }
         )
 
@@ -274,6 +433,9 @@ def run_single_experiment(
             expected_logs=expected_logs,
             log_file=log_file,
             response=error_text,
+            detected_anomalies=detected_anomalies,
+            actual_anomalies=actual_anomalies,
+            precision=precision,
         )
     finally:
         rag_controller.LLM_MODEL = original_model
@@ -290,6 +452,11 @@ def print_result_summary(result: RunResult) -> None:
         f"metrics_csv={result.metrics_csv}"
     )
     print(f"      response_preview={_format_summary(result.response)}")
+    print(
+        "      anomalies_detected="
+        f"{result.detected_anomalies if result.detected_anomalies is not None else 'n/a'}"
+        f"/{result.actual_anomalies} precision={result.precision if result.precision is not None else 'n/a'}%"
+    )
     if not result.is_log_match():
         print(
             f"      ⚠️  Os logs extraídos do prompt não correspondem ao conteúdo esperado de {result.log_file}."
