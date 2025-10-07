@@ -155,6 +155,16 @@ def _parse_logs_from_prompt(prompt: str) -> Tuple[Optional[list], str]:
     return None, context
 
 
+def _sanitize_logs_for_prompt(logs: list) -> list:
+    sanitized: list = []
+    for entry in logs:
+        if isinstance(entry, dict):
+            sanitized.append({k: v for k, v in entry.items() if k != "is_anomaly"})
+        else:
+            sanitized.append(entry)
+    return sanitized
+
+
 def _expected_logs(limit: int) -> Tuple[Optional[list], Path]:
     base_dir = Path(rag_controller.__file__).resolve().parent
     log_file = base_dir / "log.txt"
@@ -170,7 +180,8 @@ def _expected_logs(limit: int) -> Tuple[Optional[list], Path]:
 
 
 def _build_context_payload(logs: list) -> dict:
-    return {"policy": POLICY, "logs": logs}
+    logs_for_prompt = _sanitize_logs_for_prompt(logs)
+    return {"policy": POLICY, "logs": logs_for_prompt}
 
 
 def _build_prompt(question: str, context_payload: dict) -> Tuple[str, str]:
@@ -182,13 +193,13 @@ Tarefa:
 Analisa os logs fornecidos aplicando rigorosamente as regras descritas em policy.rules.
 Responde exclusivamente em JSON com a seguinte estrutura:
 {{
-  "detected_anomalies": <numero inteiro>,
-  "anomalies": [
-    {{"index": <indice do log na lista 'logs'>, "reason": "..."}}
+  "evaluations": [
+    {{"_id": "<_id do log>", "is_anomaly": true|false, "reason": "Resumo técnico muito curto"}}
   ],
-  "explanation": "Resumo técnico muito curto"
+  "summary": "Resumo técnico muito curto"
 }}
-O campo "detected_anomalies" deve indicar quantos registos cumprem os critérios de anomalia definidos pela política. Evita texto fora do JSON.
+Garante que devolves uma entrada na lista "evaluations" para cada log recebido e que "is_anomaly" é sempre um booleano.
+Evita texto fora do JSON.
 Hoje é {datetime.utcnow().isoformat()}Z.
 
 Pergunta original:
@@ -204,7 +215,7 @@ def _count_anomalies(logs: Optional[list]) -> int:
     return sum(1 for entry in logs if isinstance(entry, dict) and entry.get("is_anomaly"))
 
 
-def _extract_detected_anomalies(response: str) -> Optional[int]:
+def _extract_json_object(response: str) -> Optional[dict]:
     text = response.strip()
     start = text.find("{")
     end = text.rfind("}")
@@ -215,14 +226,79 @@ def _extract_detected_anomalies(response: str) -> Optional[int]:
         parsed = json.loads(candidate)
     except json.JSONDecodeError:
         return None
-    value = parsed.get("detected_anomalies")
+    return parsed if isinstance(parsed, dict) else None
+
+
+def _to_bool(value) -> Optional[bool]:
     if isinstance(value, bool):
-        return int(value)
+        return value
     if isinstance(value, (int, float)):
-        return int(value)
-    if isinstance(value, str) and value.strip().isdigit():
-        return int(value.strip())
+        return bool(value)
+    if isinstance(value, str):
+        lowered = value.strip().lower()
+        if lowered in {"true", "yes", "1", "sim"}:
+            return True
+        if lowered in {"false", "no", "0", "nao", "não"}:
+            return False
     return None
+
+
+def _extract_predictions(response: str) -> Optional[dict[str, bool]]:
+    parsed = _extract_json_object(response)
+    if not parsed:
+        return None
+
+    predictions: dict[str, bool] = {}
+
+    def _populate_from_list(items: list) -> None:
+        for item in items:
+            if not isinstance(item, dict):
+                continue
+            log_id = item.get("_id") or item.get("id") or item.get("log_id")
+            if not log_id:
+                continue
+            is_anomaly = _to_bool(item.get("is_anomaly"))
+            if is_anomaly is None:
+                continue
+            predictions[str(log_id)] = is_anomaly
+
+    for key in ("evaluations", "logs", "results", "entries"):
+        value = parsed.get(key)
+        if isinstance(value, list):
+            _populate_from_list(value)
+            if predictions:
+                break
+
+    if not predictions:
+        for key, value in parsed.items():
+            bool_value = _to_bool(value)
+            if bool_value is None:
+                continue
+            predictions[str(key)] = bool_value
+
+    return predictions or None
+
+
+def _actual_label_map(logs: Optional[list]) -> dict[str, bool]:
+    labels: dict[str, bool] = {}
+    if not isinstance(logs, list):
+        return labels
+    for entry in logs:
+        if not isinstance(entry, dict):
+            continue
+        log_id = entry.get("_id")
+        if not log_id:
+            continue
+        is_anomaly = entry.get("is_anomaly")
+        if isinstance(is_anomaly, bool):
+            labels[str(log_id)] = is_anomaly
+        elif isinstance(is_anomaly, (int, float)):
+            labels[str(log_id)] = bool(is_anomaly)
+        elif isinstance(is_anomaly, str):
+            normalized = _to_bool(is_anomaly)
+            if normalized is not None:
+                labels[str(log_id)] = normalized
+    return labels
 
 
 @dataclass
@@ -281,9 +357,10 @@ def run_single_experiment(
         rag_controller.LLM_MODEL = model
         rag_controller.LLM_MODEL_LIGHT = light_model
 
-        expected_logs, log_file = _expected_logs(log_limit)
-        logs_for_prompt = expected_logs or []
+        raw_expected_logs, log_file = _expected_logs(log_limit)
+        logs_for_prompt = raw_expected_logs or []
         context_payload = _build_context_payload(logs_for_prompt)
+        expected_logs = context_payload.get("logs") if isinstance(context_payload, dict) else None
         prompt, context_text = _build_prompt(question, context_payload)
         logs_from_prompt, _ = _parse_logs_from_prompt(prompt)
 
@@ -303,11 +380,23 @@ def run_single_experiment(
         completion_tokens = metrics_utils.count_tokens(response, model)
         total_tokens = prompt_tokens + completion_tokens
 
-        detected_anomalies = _extract_detected_anomalies(response)
+        predictions = _extract_predictions(response)
+        detected_anomalies = (
+            sum(1 for value in predictions.values() if value)
+            if predictions is not None
+            else None
+        )
         actual_anomalies = _count_anomalies(logs_for_prompt)
-        if detected_anomalies is not None and actual_anomalies > 0:
-            precision = round((detected_anomalies / actual_anomalies) * 100, 2)
-        elif detected_anomalies == 0 and actual_anomalies == 0:
+        actual_labels = _actual_label_map(logs_for_prompt)
+        if actual_labels and predictions is not None:
+            total = len(actual_labels)
+            correct = sum(
+                1
+                for log_id, actual in actual_labels.items()
+                if log_id in predictions and predictions[log_id] == actual
+            )
+            precision = round((correct / total) * 100, 2)
+        elif not actual_labels and not predictions:
             precision = 100.0
 
         metrics_logger = metrics_utils.MetricsLogger(csv_path=metrics_path)
