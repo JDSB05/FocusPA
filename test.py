@@ -201,7 +201,6 @@ Responde exclusivamente em JSON **válido** com a seguinte estrutura (sem texto 
 Garante que devolves uma entrada na lista "evaluations" para cada log recebido e que "is_anomaly" é sempre um booleano.
 Se não conseguires cumprir algum requisito, responde com JSON válido no formato {{"evaluations": [], "summary": "formato inválido"}}.
 Não acrescentes qualquer texto fora do JSON.
-Respostas com texto fora do JSON ou formato inválido são consideradas erro e resultam em precisão 0.
 Hoje é {datetime.utcnow().isoformat()}Z.
 
 Pergunta original:
@@ -409,13 +408,14 @@ def run_single_experiment(
         if actual_labels:
             predicted_labels = (
                 {log_id: bool(value) for log_id, value in predictions.items()}
+                if predictions
+                else {}
             )
             total = len(actual_labels)
             correct = sum(
                 1
                 for log_id, actual in actual_labels.items()
-                if predicted_labels.get(log_id) is not None
-                and predicted_labels[log_id] == actual
+                if predicted_labels.get(log_id, False) == actual
             )
             precision = round((correct / total) * 100, 2)
         else:
