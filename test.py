@@ -260,11 +260,14 @@ def _to_bool(value) -> Optional[bool]:
     return None
 
 
-def _extract_predictions(response: str) -> Optional[dict[str, bool]]:
+def _normalize_response_payload(response: str) -> tuple[dict, bool]:
     parsed = _extract_json_object(response)
-    if not parsed:
-        return None
+    if isinstance(parsed, dict):
+        return parsed, True
+    return {"evaluations": [], "summary": "formato inválido"}, False
 
+
+def _extract_predictions(payload: dict) -> dict[str, bool]:
     predictions: dict[str, bool] = {}
 
     def _populate_from_list(items: list) -> None:
@@ -280,20 +283,20 @@ def _extract_predictions(response: str) -> Optional[dict[str, bool]]:
             predictions[str(log_id)] = is_anomaly
 
     for key in ("evaluations", "logs", "results", "entries"):
-        value = parsed.get(key)
+        value = payload.get(key)
         if isinstance(value, list):
             _populate_from_list(value)
             if predictions:
                 break
 
     if not predictions:
-        for key, value in parsed.items():
+        for key, value in payload.items():
             bool_value = _to_bool(value)
             if bool_value is None:
                 continue
             predictions[str(key)] = bool_value
 
-    return predictions or None
+    return predictions
 
 
 def _actual_label_map(logs: Optional[list]) -> dict[str, bool]:
@@ -397,12 +400,9 @@ def run_single_experiment(
         completion_tokens = metrics_utils.count_tokens(response, model)
         total_tokens = prompt_tokens + completion_tokens
 
-        predictions = _extract_predictions(response)
-        detected_anomalies = (
-            sum(1 for value in predictions.values() if value)
-            if predictions is not None
-            else None
-        )
+        payload, payload_valid = _normalize_response_payload(response)
+        predictions = _extract_predictions(payload)
+        detected_anomalies = sum(1 for value in predictions.values() if value)
         actual_anomalies = _count_anomalies(logs_for_prompt)
         actual_labels = _actual_label_map(logs_for_prompt)
         if actual_labels:
@@ -418,8 +418,8 @@ def run_single_experiment(
                 if predicted_labels.get(log_id, False) == actual
             )
             precision = round((correct / total) * 100, 2)
-        elif not actual_labels and not predictions:
-            precision = 100.0
+        else:
+            precision = 100.0 if not predictions else 0.0
 
         metrics_logger = metrics_utils.MetricsLogger(csv_path=metrics_path)
         success = "yes"
@@ -427,6 +427,9 @@ def run_single_experiment(
         if response.strip().startswith("❌"):
             success = "no"
             error_message = response.strip()
+        elif not payload_valid:
+            success = "no"
+            error_message = "Resposta do modelo não estava em JSON válido."
 
         metrics_logger.log(
             {
@@ -468,9 +471,7 @@ def run_single_experiment(
                 "log_limit": log_limit,
                 "mode": mode,
                 "actual_anomalies": actual_anomalies,
-                "detected_anomalies": detected_anomalies
-                if detected_anomalies is not None
-                else "",
+                "detected_anomalies": detected_anomalies,
                 "precision": precision if precision is not None else "",
             }
         )
