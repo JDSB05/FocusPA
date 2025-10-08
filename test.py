@@ -191,7 +191,7 @@ def _build_prompt(question: str, context_payload: dict) -> Tuple[str, str]:
 
 Tarefa:
 Analisa os logs fornecidos aplicando rigorosamente as regras descritas em policy.rules.
-Responde exclusivamente em JSON com a seguinte estrutura:
+Responde exclusivamente em JSON **válido** com a seguinte estrutura (sem texto antes ou depois):
 {{
   "evaluations": [
     {{"_id": "<_id do log>", "is_anomaly": true|false, "reason": "Resumo técnico muito curto"}}
@@ -199,7 +199,9 @@ Responde exclusivamente em JSON com a seguinte estrutura:
   "summary": "Resumo técnico muito curto"
 }}
 Garante que devolves uma entrada na lista "evaluations" para cada log recebido e que "is_anomaly" é sempre um booleano.
-Evita texto fora do JSON.
+Se não conseguires cumprir algum requisito, responde com JSON válido no formato {{"evaluations": [], "summary": "formato inválido"}}.
+Não acrescentes qualquer texto fora do JSON.
+Respostas com texto fora do JSON ou formato inválido são consideradas erro e resultam em precisão 0.
 Hoje é {datetime.utcnow().isoformat()}Z.
 
 Pergunta original:
@@ -216,17 +218,33 @@ def _count_anomalies(logs: Optional[list]) -> int:
 
 
 def _extract_json_object(response: str) -> Optional[dict]:
-    text = response.strip()
-    start = text.find("{")
-    end = text.rfind("}")
-    if start == -1 or end == -1 or end <= start:
+    text = rag_controller.strip_json_markdown(response.strip())
+    if not text:
         return None
-    candidate = text[start : end + 1]
-    try:
-        parsed = json.loads(candidate)
-    except json.JSONDecodeError:
-        return None
-    return parsed if isinstance(parsed, dict) else None
+
+    decoder = json.JSONDecoder()
+    idx = 0
+    length = len(text)
+
+    while idx < length:
+        char = text[idx]
+        if char.isspace():
+            idx += 1
+            continue
+        if char != "{":
+            next_start = text.find("{", idx)
+            if next_start == -1:
+                return None
+            idx = next_start
+        try:
+            parsed, end = decoder.raw_decode(text, idx)
+        except json.JSONDecodeError:
+            idx += 1
+            continue
+        if isinstance(parsed, dict):
+            return parsed
+        idx = end
+    return None
 
 
 def _to_bool(value) -> Optional[bool]:
@@ -243,11 +261,14 @@ def _to_bool(value) -> Optional[bool]:
     return None
 
 
-def _extract_predictions(response: str) -> Optional[dict[str, bool]]:
+def _normalize_response_payload(response: str) -> tuple[dict, bool]:
     parsed = _extract_json_object(response)
-    if not parsed:
-        return None
+    if isinstance(parsed, dict):
+        return parsed, True
+    return {"evaluations": [], "summary": "formato inválido"}, False
 
+
+def _extract_predictions(payload: dict) -> dict[str, bool]:
     predictions: dict[str, bool] = {}
 
     def _populate_from_list(items: list) -> None:
@@ -263,20 +284,20 @@ def _extract_predictions(response: str) -> Optional[dict[str, bool]]:
             predictions[str(log_id)] = is_anomaly
 
     for key in ("evaluations", "logs", "results", "entries"):
-        value = parsed.get(key)
+        value = payload.get(key)
         if isinstance(value, list):
             _populate_from_list(value)
             if predictions:
                 break
 
     if not predictions:
-        for key, value in parsed.items():
+        for key, value in payload.items():
             bool_value = _to_bool(value)
             if bool_value is None:
                 continue
             predictions[str(key)] = bool_value
 
-    return predictions or None
+    return predictions
 
 
 def _actual_label_map(logs: Optional[list]) -> dict[str, bool]:
@@ -380,24 +401,25 @@ def run_single_experiment(
         completion_tokens = metrics_utils.count_tokens(response, model)
         total_tokens = prompt_tokens + completion_tokens
 
-        predictions = _extract_predictions(response)
-        detected_anomalies = (
-            sum(1 for value in predictions.values() if value)
-            if predictions is not None
-            else None
-        )
+        payload, payload_valid = _normalize_response_payload(response)
+        predictions = _extract_predictions(payload)
+        detected_anomalies = sum(1 for value in predictions.values() if value)
         actual_anomalies = _count_anomalies(logs_for_prompt)
         actual_labels = _actual_label_map(logs_for_prompt)
-        if actual_labels and predictions is not None:
+        if actual_labels:
+            predicted_labels = (
+                {log_id: bool(value) for log_id, value in predictions.items()}
+            )
             total = len(actual_labels)
             correct = sum(
                 1
                 for log_id, actual in actual_labels.items()
-                if log_id in predictions and predictions[log_id] == actual
+                if predicted_labels.get(log_id) is not None
+                and predicted_labels[log_id] == actual
             )
             precision = round((correct / total) * 100, 2)
-        elif not actual_labels and not predictions:
-            precision = 100.0
+        else:
+            precision = 100.0 if not predictions else 0.0
 
         metrics_logger = metrics_utils.MetricsLogger(csv_path=metrics_path)
         success = "yes"
@@ -405,6 +427,9 @@ def run_single_experiment(
         if response.strip().startswith("❌"):
             success = "no"
             error_message = response.strip()
+        elif not payload_valid:
+            success = "no"
+            error_message = "Resposta do modelo não estava em JSON válido."
 
         metrics_logger.log(
             {
@@ -446,9 +471,7 @@ def run_single_experiment(
                 "log_limit": log_limit,
                 "mode": mode,
                 "actual_anomalies": actual_anomalies,
-                "detected_anomalies": detected_anomalies
-                if detected_anomalies is not None
-                else "",
+                "detected_anomalies": detected_anomalies,
                 "precision": precision if precision is not None else "",
             }
         )
