@@ -191,7 +191,7 @@ def _build_prompt(question: str, context_payload: dict) -> Tuple[str, str]:
 
 Tarefa:
 Analisa os logs fornecidos aplicando rigorosamente as regras descritas em policy.rules.
-Responde exclusivamente em JSON com a seguinte estrutura:
+Responde exclusivamente em JSON **válido** com a seguinte estrutura (sem texto antes ou depois):
 {{
   "evaluations": [
     {{"_id": "<_id do log>", "is_anomaly": true|false, "reason": "Resumo técnico muito curto"}}
@@ -199,7 +199,8 @@ Responde exclusivamente em JSON com a seguinte estrutura:
   "summary": "Resumo técnico muito curto"
 }}
 Garante que devolves uma entrada na lista "evaluations" para cada log recebido e que "is_anomaly" é sempre um booleano.
-Evita texto fora do JSON.
+Se não conseguires cumprir algum requisito, responde com JSON válido no formato {{"evaluations": [], "summary": "formato inválido"}}.
+Não acrescentes qualquer texto fora do JSON.
 Hoje é {datetime.utcnow().isoformat()}Z.
 
 Pergunta original:
@@ -216,17 +217,33 @@ def _count_anomalies(logs: Optional[list]) -> int:
 
 
 def _extract_json_object(response: str) -> Optional[dict]:
-    text = response.strip()
-    start = text.find("{")
-    end = text.rfind("}")
-    if start == -1 or end == -1 or end <= start:
+    text = rag_controller.strip_json_markdown(response.strip())
+    if not text:
         return None
-    candidate = text[start : end + 1]
-    try:
-        parsed = json.loads(candidate)
-    except json.JSONDecodeError:
-        return None
-    return parsed if isinstance(parsed, dict) else None
+
+    decoder = json.JSONDecoder()
+    idx = 0
+    length = len(text)
+
+    while idx < length:
+        char = text[idx]
+        if char.isspace():
+            idx += 1
+            continue
+        if char != "{":
+            next_start = text.find("{", idx)
+            if next_start == -1:
+                return None
+            idx = next_start
+        try:
+            parsed, end = decoder.raw_decode(text, idx)
+        except json.JSONDecodeError:
+            idx += 1
+            continue
+        if isinstance(parsed, dict):
+            return parsed
+        idx = end
+    return None
 
 
 def _to_bool(value) -> Optional[bool]:
@@ -388,12 +405,17 @@ def run_single_experiment(
         )
         actual_anomalies = _count_anomalies(logs_for_prompt)
         actual_labels = _actual_label_map(logs_for_prompt)
-        if actual_labels and predictions is not None:
+        if actual_labels:
+            predicted_labels = (
+                {log_id: bool(value) for log_id, value in predictions.items()}
+                if predictions
+                else {}
+            )
             total = len(actual_labels)
             correct = sum(
                 1
                 for log_id, actual in actual_labels.items()
-                if log_id in predictions and predictions[log_id] == actual
+                if predicted_labels.get(log_id, False) == actual
             )
             precision = round((correct / total) * 100, 2)
         elif not actual_labels and not predictions:
