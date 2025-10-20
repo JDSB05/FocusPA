@@ -60,9 +60,7 @@ def get_embedding_chunks(name: str, filename: str, chunks: list[str], h_question
     if len(h_questions) == 0:
         return [f"Name: {name}\nFilename: {filename}\n{c}" for c in chunks]
     else:
-        formated_chunks = [f"Name: {name}\nFilename: {filename}\nPergunta hipotética:{h}\n{c}" for c, h in zip(chunks, h_questions)]
-
-    return formated_chunks
+        return [f"Name: {name}\nFilename: {filename}\nPergunta hipotética:{h}\n{c}" for c, h in zip(chunks, h_questions)]
 
 def nat_lang_to_es(chunk: str) -> str:
     """Converte um chunk de uma politica em linguagem natural numa query para o ES + raciocínio usado."""
@@ -106,12 +104,13 @@ Resposta (JSON + raciocínio ou null):
 """
     try:
         llm_answer = ask_llm(prompt, LLM_MODEL_LIGHT).strip()
+        llm_answer_s = llm_answer.split("#####")
 
-        if llm_answer.lower() == "null":
+        # Caso a resposta seja null ou no formato invalido returnar strings vazias
+        if llm_answer.lower() == "null" or len(llm_answer_s) != 2:
             return "", ""
         
-        es_query, reasoning = llm_answer.split("#####")
-        
+        es_query, reasoning = llm_answer_s
         es_query = strip_json_markdown(es_query)
         reasoning = strip_json_markdown(reasoning)
 

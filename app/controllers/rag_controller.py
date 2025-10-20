@@ -17,6 +17,7 @@ from app.services.elastic import es
 from app.utils.metrics import LLMRunMetrics, count_tokens
 from dotenv import load_dotenv
 
+import mcp
 from mcp import ClientSession as MCPClientSession
 from mcp import Tool as MCPTool
 
@@ -1011,13 +1012,14 @@ async def query_rag_with_mcp_tools(
 
     # E feita a pergunta inicial, apresentando as tools disponiveis
     response = ollama.chat(
-        model=model,
+        model="qwen2.5:32b",
         messages=combined_messages,
         stream=False,
         think=False,
         tools=olama_tools,
     )
 
+    # combined_messages.append({"role": response.message.role, "content": response.message.content, "thinking": response.message.thinking})
     # A cada tool chamada, invoca-se o MCP para obter o seu resultado
     if response.message.tool_calls:
         print(f"[INFO] [MCP SERVER] Tools called: {[tool_call.function.name for tool_call in response.message.tool_calls]}")
@@ -1026,26 +1028,31 @@ async def query_rag_with_mcp_tools(
             tool_args = tool_call.function.arguments
 
             func_res = await mcp_session.call_tool(tool_name, tool_args)
-            result = " ".join([f.text for f in func_res.content])
-            combined_messages.append({"role": "tool", "name": tool_name, "content": str(result)})
+
+            print(f"[INFO] [MCP SERVER] tool called: {tool_name}")
+            print(f"[INFO] [MCP SERVER] tool arguments: {tool_args[:30] if len(tool_args) > 30 else tool_args}")
+            
+            result = " ".join([f.text for f in func_res.content if isinstance(f, mcp.types.TextContent)])
+            combined_messages.append({"role": "tool", "name": tool_name, "content": result})
 
     # Caso nao haja nenhuma tool chamada, devolve a resposta diretamente
     else:
         return response.message.content
 
-    # Finalmente, envia-se a pergunta original mais o contexto das tools
-    combined_messages.append({"role": "user", "content": final_question})
     response = ollama.chat(
-        model=model,
+        model="qwen2.5:32b",
         messages=combined_messages,
         stream=False,
         think=False,
     )
 
+    combined_messages.append({"role": response.message.role, "content": response.message.content, "thinking": response.message.thinking})
+
     if response.message.content != "":
         return response.message.content
     else:
-        return combined_messages[-1]["content"]
+        # Se a ultima mensagem nao tiver conteudo, devolver resultado das tools chamadas ao utilizador
+        return "tool results: " + "\n----\n".join([f'{m["name"]}:\n{m["content"]}' for m in combined_messages if m["role"] == "tool"])
 
 def mcp_to_ollama(mcp_tool: MCPTool):
     """

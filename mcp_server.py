@@ -119,6 +119,7 @@ es = get_client()
 
 import os
 import chromadb
+import traceback
 
 
 chroma = chromadb.HttpClient(
@@ -139,7 +140,7 @@ def greet(name: str = "World") -> str:
     return f"Hello, {name}!"
 
 @mcp_server.tool()
-def es_log_search_tool(es_query: str, es_limit: int):
+def es_log_search_tool(es_query: str, es_limit: int) -> str:
     """
     Log search tool from Elasticsearch.
 
@@ -178,10 +179,10 @@ def es_log_search_tool(es_query: str, es_limit: int):
             for d in es_docs
         ]
 
-    return es_blocks
+    return json.dumps(es_blocks)
 
 @mcp_server.tool()
-def chroma_policy_search_tool(chroma_query: str, chroma_limit: int = 5):
+def chroma_policy_search_tool(chroma_query: str, chroma_limit: int = 5) -> str:
     """
     Search the ChromaDB for relevant policy documents.
 
@@ -194,7 +195,7 @@ def chroma_policy_search_tool(chroma_query: str, chroma_limit: int = 5):
         chroma_pairs = chroma_search(chroma_query, top_k=chroma_limit)
         chroma_blocks = [f"[POLICY]\n{p['text']}" for p in chroma_pairs if p.get("text")]
 
-    return chroma_blocks
+    return " ".join(chroma_blocks)
 
 
 if __name__ == "__main__":

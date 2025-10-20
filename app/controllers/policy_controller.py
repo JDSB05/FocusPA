@@ -14,7 +14,8 @@ import mimetypes
 from ..utils.text_chunker import get_embedding_chunks, get_h_questions, nat_lang_to_es, split_into_word_chunks
 from ..services.embeddings import embed
 
-USE_HYDE = os.getenv("USE_HYDE", "false").lower() == "true"
+USE_HYDE = os.getenv("USE_HYDE", "false").lower() == "true"         # Flag para decidir uso de pergunta hipotetica no embed dos chunks
+USE_SIGN = os.getenv("USE_NL", "false").lower() == "true"             # Flag para decidir se se extrai a assinatura de politicas
 
 UPLOAD_FOLDER = "uploads"
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
@@ -37,15 +38,17 @@ def add_policy(name: str, content: str, base_meta: dict | None = None):
     if not chunks:
         chunks = [content]
 
+    # Extrai perguntas hipoteticas relativas aos chunks caso a flag seja True
     h_questions = get_h_questions(chunks) if USE_HYDE else []
-    
-    llm_data = [nat_lang_to_es(c) for c in chunks]
-    chunk_es_queries, chunk_reasonings = zip(*llm_data) if llm_data else ([], [])
-    chunk_es_queries = list(chunk_es_queries)
-    chunk_reasonings = list(chunk_reasonings)
+
+    # Extrai assinaturas de queries e os respetivos reasonings caso a flag seja True
+    signatures_reasons = [nat_lang_to_es(c) for c in chunks] if USE_SIGN else None
+    chunk_es_queries, chunk_reasonings = zip(*signatures_reasons) if signatures_reasons else ([], [])
 
     # 2) Embeddings (um por chunk)
     # embeddings = embed(chunks)
+
+    # Usa o nome dado a politica, o nome ddo ficheiro, o chunk e a pergunta hip. (caso haja), no embedding
     embeddings = embed(get_embedding_chunks(name, base_meta.get("filename", "unknown") if base_meta else "unknown", chunks, h_questions))    
 
     # 3) IDs estáveis por chunk (evita conflitos)
@@ -60,8 +63,8 @@ def add_policy(name: str, content: str, base_meta: dict | None = None):
             "chunk_index": i,
             "total_chunks": total,
             "ingested_at": datetime.utcnow().isoformat() + "Z",
-            "es_query": chunk_es_queries[i] if i < len(chunk_es_queries) else None,
-            "reasoning": chunk_reasonings[i] if i < len(chunk_reasonings) else None,
+            "es_query": chunk_es_queries[i] if i < len(chunk_es_queries) else "",
+            "reasoning": chunk_reasonings[i] if i < len(chunk_reasonings) else "",
         }
         md.update(base_meta)
         metadatas.append(md)
@@ -113,6 +116,10 @@ def review_extracted_signs(ids: list[str]):
         i for i, md in enumerate(res.get('metadatas', []))
         if md.get('es_query', '') != ""
     ]
+
+    # Se nao ha nenhuma assinatura extraida, voltar para a lista de politicas
+    if len(filtered_indexes) == 0:
+        return redirect(url_for('policy.list_policies'))
 
     # Reconstrói o dicionário com os itens filtrados
     items = {
