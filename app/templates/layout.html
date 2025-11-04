@@ -230,7 +230,7 @@
   });
 </script>
 <script>
-  function showModal({ title = '', body = '', actions = [] }) {
+  function showModal({ title = '', body = '', actions = [], hideAct = true }) {
     document.getElementById('modal-title').innerHTML = title;
     document.getElementById('modal-body').innerHTML  = body;
     const actionsContainer = document.getElementById('modal-actions');
@@ -239,7 +239,8 @@
       const btn = document.createElement('button');
       btn.className = 'btn';
       btn.textContent = action.label;
-      btn.onclick = () => { action.onClick(); hideModal(); };
+      if (hideAct) btn.onclick = () => { action.onClick(); hideModal(); };
+      else btn.onclick = () => { action.onClick(); };
       actionsContainer.appendChild(btn);
     });
     document.getElementById('generic-modal').style.display = 'flex';
