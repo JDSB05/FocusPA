@@ -17,6 +17,10 @@ from app.services.elastic import es
 from app.utils.metrics import LLMRunMetrics, count_tokens
 from dotenv import load_dotenv
 
+import mcp
+from mcp import ClientSession as MCPClientSession
+from mcp import Tool as MCPTool
+
 # ===== Config =====
 
 load_dotenv(dotenv_path='../.env')
@@ -402,6 +406,7 @@ Regras:
 - Se a pergunta for muito vaga e não houver dados suficientes para gerar a query, devolver apenas: null
 
 Campos comuns que podes usar: 
+- "hour_of_day" (range)
 - "@timestamp" (range)
 - "event.code"
 - "winlog.event_id"
@@ -501,9 +506,9 @@ def chroma_search(query, top_k=5):
     results = chroma.get_or_create_collection("policies").query(
         query_embeddings=[query_embedding], n_results=top_k
     )
-    documents = results.get("documents") or []
-    metadatas = results.get("metadatas") or results.get("metas") or []
-    distances = results.get("distances") or []
+    documents = results.get("documents")[0] or []
+    metadatas = results.get("metadatas")[0] or results.get("metas")[0] or []
+    distances = results.get("distances")[0] or []
 
     pairs = []
     def pick(lst, i):
@@ -644,10 +649,9 @@ def query_hybrid_rag_stream(
     refined = reformulate_for_es(final_question)
     print(f"[INFO] Query reformulada (stream): {refined!r}")
 
-    if is_nullish_query(refined):
-        print("[INFO] Pergunta demasiado vaga, não há pesquisa.")
-        #yield "A pergunta é demasiado vaga para pesquisa. Especifica melhor (ex.: intervalo temporal, event_id, user.name)."
-        #return
+    # if is_nullish_query(refined):
+    #     yield "A pergunta é demasiado vaga para pesquisa. Especifica melhor (ex.: intervalo temporal, event_id, user.name)."
+    #     return
 
     # ---- Elasticsearch ----
     es_limit, chroma_limit = get_context_limits(max_es_logs, max_chroma_chunks)
@@ -722,3 +726,345 @@ def query_hybrid_rag_stream(
     ):
         yield piece
 
+
+def query_rag_stream_w_tools(
+    question: str,
+    time_from: str | None = None,
+    time_to: str | None = None,
+    messages: list[dict] | None = None,   # histórico do browser
+    model: str = LLM_MODEL,                # usa o teu default
+    max_es_logs: int | None = None,
+    max_chroma_chunks: int | None = None,
+    hist_size: int = 12,
+):
+    """
+    Versão com recurso a tools do ollama (base para MCP)
+    Envia pergunta para o LLM com tools do Ollama.
+    """
+    
+    # Pergunta efetiva a usar no RAG (se question vier vazio, tenta última do user)
+    def _last_user_question(msgs):
+        if not isinstance(msgs, list):
+            return ""
+        for m in reversed(msgs):
+            if (m.get("role") or "").lower() == "user" or (m.get("role") or "").lower() == "tool":
+                txt = (m.get("content") or "").strip()
+                if txt:
+                    return txt
+        return ""
+
+    def _es_log_search_tool(es_query: str, es_limit: int):
+        """
+        Ferramenta para pesquisa de logs no Elasticsearch.
+
+        es_query: string
+        es_limit: int (max resultados a devolver)
+
+        es_query deve obedecer as seguintes regras:
+        - Se a pergunta incluir vários valores para um campo, usar "terms" (plural) em vez de "term".
+        - Colocar filtros temporais (intervalos de datas) **sempre dentro de "range"**, nunca diretamente como chave.
+          Exemplo correto:
+          { "range": { "@timestamp": { "gte": "...", "lte": "..." } } }
+        - Colocar filtros temporais dentro de "filter" e não "must".
+        - Devolver apenas JSON válido, nada mais.
+        - Se a pergunta for muito vaga e não houver dados suficientes para gerar a query, devolver apenas: null
+
+        Campos comuns que podes usar:
+        - "hour_of_day" (range)
+        - "@timestamp" (range)
+        - "event.code"
+        - "winlog.event_id"
+        - "user.name"
+        - "access_mask"
+        - "log.level"
+        - "log_name"
+        """
+
+        # Tentativa de corrigir um erro comum do LLM de nao envolver a query em {"query": {...}}
+        if "query" not in es_query:
+            es_query = f'{{"query": {es_query}}}'
+
+        if es_limit > 0:
+            es_docs = es_search(es_query, time_from=time_from, time_to=time_to, size=es_limit)
+            es_blocks = [
+                f"@timestamp={d.get('@timestamp')} event.code={_g(d,'event.code')} "
+                f"winlog.event_id={_g(d,'winlog.event_id')} user.name={_g(d,'user.name')}\n{d.get('message','')}"
+                for d in es_docs
+            ]
+
+        return es_blocks
+    
+    def _chroma_policy_search_tool(chroma_query: str, chroma_limit):
+        """
+        Ferramenta para pesquisa de políticas no Chroma.
+
+        chroma_query: string (query otimizada para persquisa de políticas a uma base de dados do chromadb)
+        chroma_limit: int (numero maximo resultados a devolver)
+        """
+        if chroma_limit > 0:
+            chroma_pairs = chroma_search(chroma_query, top_k=chroma_limit)
+            chroma_blocks = [f"[POLICY]\n{p['text']}" for p in chroma_pairs if p.get("text")]
+        
+        return chroma_blocks
+
+    final_question = (question or "").strip() or _last_user_question(messages)
+    # if not final_question:
+    #     yield "Pergunta vazia."
+    #     return
+
+
+    norm_msgs = []
+    if isinstance(messages, list):
+        for m in messages[-hist_size:]:
+            role = (m.get("role") or "user").lower()
+            content = (m.get("content") or "").lstrip("\u0001")
+            if content:
+                norm_msgs.append({"role": role, "content": content})
+
+    # Garante que a última mensagem do histórico é a 'final_question' (do user)
+    if not norm_msgs or norm_msgs[-1]["role"] != "user":
+        norm_msgs.append({"role": "user", "content": final_question})
+
+    # Descricao detalhada das tools que o LLM pode usar, passada depois como argumento do ollama.chat() 
+    available_tools = [
+    {
+        "type": "function",
+        "function": {
+            "name": "_es_log_search_tool",
+            "description": (
+                "Searches Elasticsearch logs using a JSON query and returns formatted results. "
+                "Use this tool when the user asks to find or analyze system or security log events."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "es_query": {
+                        "type": "string",
+                        "description": 
+                            "A valid elasticsearch query in JSON format that must follow these rules:"
+                            " - If the user question includes multiple values for a field, use 'terms' (plural) instead of 'term'."
+                            " - Place time filters (date ranges) **always inside 'range'**, never directly as a key."
+                            " Correct example:"
+                            " { 'range': { '@timestamp': { 'gte': '...', 'lte': '...' } } }"
+                            " - Place time filters inside 'filter' and not 'must'."
+                            " - Must be only valid JSON"
+                            " - The JSON must be wrapped inside \"query\": { ... }"
+
+                            " Common fields you can use:"
+                            " - \"hour_of_day\" (range)"
+                            "- \"@timestamp\" (range)"
+                            "- \"event.code\""
+                            "- \"winlog.event_id\""
+                            "- \"user.name\""
+                            "- \"access_mask\""
+                            "- \"log.level\""
+                            "- \"log_name\""
+                    },
+                    "es_limit": {
+                        "type": "integer",
+                        "description": "Maximum number of log results to return."
+                    },
+                },
+                "required": ["es_query", "es_limit"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "_chroma_policy_search_tool",
+            "description": (
+                "Searches policy documents in a Chroma database and returns relevant policy texts. "
+                "Use this when the user asks about internal policies, rules, or compliance documents."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "chroma_query": {
+                        "type": "string",
+                        "description": "A natural-language or optimized query for searching policy content in ChromaDB."
+                    },
+                    "chroma_limit": {
+                        "type": "integer",
+                        "description": "Maximum number of policy results to return."
+                    },
+                },
+                "required": ["chroma_query", "chroma_limit"],
+            },
+        },
+    },
+]
+
+    system_ctx = (
+        "Instruções:\n"
+        "- Responde de forma técnica e sucinta, como perito em Windows Event Logs (segurança/auditoria).\n"
+        "- Usa apenas o contexto acima. Se faltar informação, diz explicitamente o que falta.\n"
+        f"- Hoje é {datetime.utcnow().isoformat()}Z.\n"
+    )
+
+    # ---- Compose mensagens para o LLM (SYSTEM + histórico do browser) ----
+    combined_messages = [{"role": "system", "content": system_ctx}] + norm_msgs
+
+    # E feita a pergunta inicial, apresentando as tools disponiveis
+    stream = ollama.chat(
+        model=model,
+        messages=combined_messages,
+        stream=True,
+        think=False,
+        tools=available_tools,
+    )
+
+    # Percorre-se a stream inicial e sao invocadas as tools conforme chamadas
+    collected_chunks = []
+    for chunk in stream:
+        if chunk.message.tool_calls:
+            for tool_call in chunk.message.tool_calls:
+                # Extracao de nome e argumentos da tool que se pretende chamar
+                tool_name = tool_call.function.name
+                tool_args = tool_call.function.arguments
+
+                # Chamada a tool e adicionada a resposta ao contexto
+                func_res = eval(f"{tool_name}(**{tool_args})")
+                combined_messages.append({"role": "tool", "name": tool_name, "content": str(func_res)})
+
+        content = (chunk.get("message") or {}).get("content") or chunk.get("response")
+        if content:
+            collected_chunks.append(content)
+            yield content
+        if chunk.get("done"):
+            break
+
+    # Segunda stream, agora com o contexto das tools
+    stream = ollama.chat(
+        model=model,
+        messages=combined_messages,
+        stream=True,
+        think=False
+    )
+
+    for chunk in stream:
+        content = (chunk.get("message") or {}).get("content") or chunk.get("response")
+        if content:
+            collected_chunks.append(content)
+            yield content
+        if chunk.get("done"):
+            break
+
+async def query_rag_with_mcp_tools(
+    question: str,
+    time_from: str | None = None,
+    time_to: str | None = None,
+    messages: list[dict] | None = None,   # histórico do browser
+    model: str = LLM_MODEL,                # usa o teu default
+    max_es_logs: int | None = None,
+    max_chroma_chunks: int | None = None,
+    hist_size: int = 12,
+    mcp_session: MCPClientSession = None,
+):
+    """
+    Versão com recurso a tools de MCP
+    Envia pergunta para o LLM com tools do server MCP.
+    """
+    
+    # Pergunta efetiva a usar no RAG (se question vier vazio, tenta última do user)
+    def _last_user_question(msgs):
+        if not isinstance(msgs, list):
+            return ""
+        for m in reversed(msgs):
+            if (m.get("role") or "").lower() == "user" or (m.get("role") or "").lower() == "tool":
+                txt = (m.get("content") or "").strip()
+                if txt:
+                    return txt
+        return ""
+
+    final_question = (question or "").strip() or _last_user_question(messages)
+    # if not final_question:
+    #     yield "Pergunta vazia."
+    #     return
+
+    norm_msgs = []
+    if isinstance(messages, list):
+        for m in messages[-hist_size:]:
+            role = (m.get("role") or "user").lower()
+            content = (m.get("content") or "").lstrip("\u0001")
+            if content:
+                norm_msgs.append({"role": role, "content": content})
+
+    # Garante que a última mensagem do histórico é a 'final_question' (do user)
+    if not norm_msgs or norm_msgs[-1]["role"] != "user":
+        norm_msgs.append({"role": "user", "content": final_question})
+
+    system_ctx = (
+        "Instruções:\n"
+        "- Responde de forma técnica e sucinta, como perito em Windows Event Logs (segurança/auditoria).\n"
+        "- Usa apenas o contexto acima. Se faltar informação, diz explicitamente o que falta.\n"
+        f"- Hoje é {datetime.utcnow().isoformat()}Z.\n"
+    )
+
+    # ---- Compose mensagens para o LLM (SYSTEM + histórico do browser) ----
+    combined_messages = [{"role": "system", "content": system_ctx}] + norm_msgs
+
+    # Faz-se uma busca para identificar as tools disponiveis no server MCP
+    if mcp_session is None:
+        olama_tools = []
+    else:
+        mcp_tools = await mcp_session.list_tools()
+        print(f"[INFO] [MCP SERVER] Available tools: {[tool.name for tool in mcp_tools.tools]}")
+        olama_tools = [mcp_to_ollama(tool) for tool in mcp_tools.tools]
+
+    # E feita a pergunta inicial, apresentando as tools disponiveis
+    response = ollama.chat(
+        model="qwen2.5:32b",
+        messages=combined_messages,
+        stream=False,
+        think=False,
+        tools=olama_tools,
+    )
+
+    # combined_messages.append({"role": response.message.role, "content": response.message.content, "thinking": response.message.thinking})
+    # A cada tool chamada, invoca-se o MCP para obter o seu resultado
+    if response.message.tool_calls:
+        print(f"[INFO] [MCP SERVER] Tools called: {[tool_call.function.name for tool_call in response.message.tool_calls]}")
+        for tool_call in response.message.tool_calls:
+            tool_name = tool_call.function.name
+            tool_args = tool_call.function.arguments
+
+            func_res = await mcp_session.call_tool(tool_name, tool_args)
+
+            print(f"[INFO] [MCP SERVER] tool called: {tool_name}")
+            print(f"[INFO] [MCP SERVER] tool arguments: {tool_args[:30] if len(tool_args) > 30 else tool_args}")
+            
+            result = " ".join([f.text for f in func_res.content if isinstance(f, mcp.types.TextContent)])
+            combined_messages.append({"role": "tool", "name": tool_name, "content": result})
+
+    # Caso nao haja nenhuma tool chamada, devolve a resposta diretamente
+    else:
+        return response.message.content
+
+    response = ollama.chat(
+        model="qwen2.5:32b",
+        messages=combined_messages,
+        stream=False,
+        think=False,
+    )
+
+    combined_messages.append({"role": response.message.role, "content": response.message.content, "thinking": response.message.thinking})
+
+    if response.message.content != "":
+        return response.message.content
+    else:
+        # Se a ultima mensagem nao tiver conteudo, devolver resultado das tools chamadas ao utilizador
+        return "tool results: " + "\n----\n".join([f'{m["name"]}:\n{m["content"]}' for m in combined_messages if m["role"] == "tool"])
+
+def mcp_to_ollama(mcp_tool: MCPTool):
+    """
+    Convert an MCP tool into an Ollama tool.
+    """
+
+    tool = {
+        "name": mcp_tool.name,
+        "description": mcp_tool.description,
+        "parameters": mcp_tool.inputSchema,
+    }
+
+    return {"type": "function", "function": tool}

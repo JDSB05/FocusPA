@@ -6,6 +6,15 @@
   .new-policy-button {
     margin-bottom: 20px;
   }
+
+  /* Make the generic modal wider and body scrollable */
+  #generic-modal .modal-container {
+    min-width: 800px;
+    max-width: 1000px;
+    padding: 30px;
+    border-radius: 14px;
+  }
+
 </style>
 <h1>Políticas</h1>
 <button onClick="location.href='{{ url_for('policy.new') }}'" class="new-policy-button">Nova Política <i class="fas fa-plus"></i></button>
@@ -38,5 +47,108 @@
       {% endfor %}
     </tbody>
   </table>
-</div>
+  </div>
+
+<script>
+  const items = {{ items | tojson }};
+  const docs = {{ items['documents'] | tojson | safe }};
+  const ids = {{ items['ids'] | tojson | safe }};
+  const es_queries = {{ items['metadatas']['es_query'] | tojson | safe }};
+  const reasonings = {{ items['metadatas']['reasoning'] | tojson | safe }};
+
+  console.log("Items:", items);
+  console.log("Docs:", docs);
+  console.log("IDs:", ids);
+  console.log("ES Queries:", es_queries);
+  console.log("Reasonings:", reasonings);
+
+
+  let currentIndex = 0;
+  let accepted = [];
+
+
+  function showCurrentItem() {
+    if (currentIndex < ids.length) {
+      showModal({
+        title: `Revisão do Chunk ${ids[currentIndex]}`,
+        body: `
+          <div id="modal-body">
+            <h3>Assinatura de Política Extraída</h3>
+            <div style="margin-bottom:10px;">${es_queries[currentIndex]}</div>
+            <details>
+              <summary style="cursor:pointer;">Mostrar Raciocínio</summary>
+              <pre style="white-space:pre-wrap;">${reasonings[currentIndex]}</pre>
+            </details>
+            <details>
+              <summary style="cursor:pointer;">Mostrar Chunk</summary>
+              <pre style="white-space:pre-wrap;">${docs[currentIndex]}</pre>
+            </details>
+          </div>
+        `,
+        hideAct: false,
+        actions: [
+          { label: "Manter", onClick: () => { accepted.push(ids[currentIndex]); nextItem(); }, closeOnClick: false },
+          { label: "Rejeitar",  onClick: () => { nextItem(); }, closeOnClick: false }
+        ]
+      });
+    } else {
+      hideModal();
+      sendResults();
+    }
+  }
+
+  function nextItem() {
+    currentIndex++;
+    showCurrentItem();
+  }
+
+  function sendResults() {
+    const rejected = ids.filter(id => !accepted.includes(id));
+    fetch("/policies/save_signatures", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({accepted: accepted, rejected: rejected})
+    })
+    .then(res => res.json())
+    .then(data => {
+      alert("Results saved: " + data.accepted.join(", "));
+      window.location.href = "/policies";
+    });
+  }
+
+  document.addEventListener("DOMContentLoaded", () => {
+    if (ids.length > 0) {
+      startReview();
+    }
+
+    // Add sendResults to modal-close button only on this page
+    const closeBtn = document.getElementById("modal-close");
+    if (closeBtn) {
+      closeBtn.addEventListener("click", sendResults);
+
+      window.addEventListener("beforeunload", () => {
+        closeBtn.removeEventListener("click", sendResults);
+      });
+    }
+
+    // Add sendResults to outside click only on this page
+    const genericModal = document.getElementById("generic-modal");
+    function outsideClickHandler(e) {
+      if (e.target.id === "generic-modal") sendResults();
+    }
+    if (genericModal) {
+      genericModal.addEventListener("click", outsideClickHandler);
+
+      window.addEventListener("beforeunload", () => {
+        genericModal.removeEventListener("click", outsideClickHandler);
+      });
+    }
+  });
+
+  function startReview() {
+    currentIndex = 0;
+    accepted = [];
+    showCurrentItem();
+  }
+</script>
 {% endblock %}

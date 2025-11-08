@@ -13,3 +13,4 @@ python-docx
 apscheduler
 ollama
 tiktoken
+mcp
