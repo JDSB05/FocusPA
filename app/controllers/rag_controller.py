@@ -446,51 +446,53 @@ Resposta (apenas JSON ou null):
 
 # ===== Elasticsearch =====
 
-def es_search(query_text: str, time_from: str | None = None, time_to: str | None = None, size: int = 20):
-    """
-    Se query_text for JSON válido, envia diretamente para ES.
-    Caso contrário, faz pesquisa BM25 no campo 'message' com filtro temporal opcional.
-    """
-    try:
-        # tentar interpretar como JSON
-        body = json.loads(query_text)
-        print("[INFO] Query ES recebida em formato JSON válido.")
-        print(body)
-    except json.JSONDecodeError:
-        print("[INFO] Query ES não é JSON. A usar BM25.")
-        print(f"[INFO] Query ES original: {query_text}")
-        must = [{"match": {"message": {"query": query_text}}}]
-        filter_terms = []
-        if time_from or time_to:
-            rng = {}
-            if time_from: rng["gte"] = time_from
-            if time_to:   rng["lte"] = time_to
-            filter_terms.append({"range": {"@timestamp": rng}})
-        body = {
-            "query": {
-                "bool": {
-                    "must": must,
-                    "filter": filter_terms
-                }
-            },
-            "_source": [
-                "@timestamp", "event.code", "winlog.event_id",
-                "user.name", "message", "log.file.path"
-            ],
-            "size": size
-        }
+FIELDS_MIN = [
+    "@timestamp",
+    "event.kind","event.category","event.type","event.outcome","event.code",
+    "event.module","event.dataset",
+    "host.name",
+    "user.name",
+    "process.pid","process.name",
+    "winlog.channel","winlog.provider_name","winlog.record_id",
+]
+
+FIELDS_SECURITY = [
+    "winlog.event_data.LogonType",
+    "winlog.event_data.SubjectUserName",
+    "winlog.event_data.TargetUserName",
+    "winlog.event_data.LogonId",
+    "winlog.event_data.IpAddress","winlog.event_data.IpPort",
+    "winlog.event_data.ProcessId","winlog.event_data.ProcessName",
+]
+
+def es_search(query_text: str, time_from: str | None = None, time_to: str | None = None,
+              size: int = 20, include_security: bool = False, include_message: bool = False):
+    import json
+    wanted = FIELDS_MIN + (FIELDS_SECURITY if include_security else []) + (["message"] if include_message else [])
+    excludes = ["event.original"]  # XML bruto
 
     try:
-        res = es.search(index="winlog-*", body=body)
-        hits = res.get("hits", {}).get("hits", [])
-        print(f"[INFO] [Elasticsearch] Encontrados {len(hits)} resultados.")
-        return [
-            {**h["_source"], "_id": h["_id"], "_index": h["_index"]}
-            for h in hits
-        ]
-    except Exception as e:
-        print(f"[WARN] [Elasticsearch] {e}")
-        return []
+        body = json.loads(query_text)
+    except json.JSONDecodeError:
+        must = [{"match": {"message": {"query": query_text}}}]
+        filters = []
+        if time_from or time_to:
+            r = {}
+            if time_from: r["gte"] = time_from
+            if time_to:   r["lte"] = time_to
+            filters.append({"range": {"@timestamp": r}})
+        body = {"query": {"bool": {"must": must, "filter": filters}}, "size": size}
+
+    # Limita campos devolvidos e filtra metadados do payload
+    res = es.search(
+        index="winlog-*",
+        body=body,
+        _source=wanted,
+        _source_excludes=excludes,
+        filter_path=["hits.hits._index","hits.hits._id","hits.hits._source"]
+    )
+    hits = (res.get("hits", {}) or {}).get("hits", [])  # já filtrado
+    return [{**h["_source"], "_id": h["_id"], "_index": h["_index"]} for h in hits]
 
 # ===== Chroma =====
 def chroma_search(query, top_k=5):
