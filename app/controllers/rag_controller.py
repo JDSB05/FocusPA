@@ -1014,7 +1014,7 @@ async def query_rag_with_mcp_tools(
 
     # E feita a pergunta inicial, apresentando as tools disponiveis
     response = ollama.chat(
-        model="qwen2.5:32b",
+        model="gpt-oss:20b",
         messages=combined_messages,
         stream=False,
         think=False,
@@ -1042,7 +1042,7 @@ async def query_rag_with_mcp_tools(
         return response.message.content
 
     response = ollama.chat(
-        model="qwen2.5:32b",
+        model="gpt-oss:20b",
         messages=combined_messages,
         stream=False,
         think=False,

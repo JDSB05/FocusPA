@@ -48,35 +48,49 @@ services:
       - pgdata:/var/lib/postgresql/data
     restart: always
 
-  # ollama:
-  #   image: ollama/ollama:latest
-  #   container_name: ollama
-  #   environment:
-  #     - OLLAMA_FORCE_CPU=${OLLAMA_FORCE_CPU}
-  #   # GPU config opcional (só funciona se Docker tiver suporte)
-  #   runtime: ${GPU_RUNTIME}
-  #   ports:
-  #     - "11434:11434"
-  #   volumes:
-  #     - ollama_data:/root/.ollama
-  #   restart: always
-  ollama:
-       image: ollama/ollama:latest
-       container_name: ollama
-       deploy:
-         resources:
-           reservations:
-             devices:
-               - driver: nvidia
-                 count: 1
-                 capabilities: [gpu]
-       environment:
-         - OLLAMA_FORCE_CPU=false
-       ports:
-         - "11434:11434"
-       volumes:
-         - ollama_data:/root/.ollama
-       restart: always
+  # --- OLLAMA: 3 perfis ---
+  ollama-cpu:
+    image: ollama/ollama:latest
+    container_name: ollama
+    profiles: ["cpu"]
+    environment:
+      - OLLAMA_FORCE_CPU=true
+    ports: ["11434:11434"]
+    volumes:
+      - ollama_data:/root/.ollama
+    restart: always
+
+  ollama-nvidia:
+    image: ollama/ollama:latest
+    container_name: ollama
+    profiles: ["nvidia"]
+    environment:
+      - OLLAMA_FORCE_CPU=false
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
+    runtime: nvidia
+    ports: ["11434:11434"]
+    volumes:
+      - ollama_data:/root/.ollama
+    restart: always
+
+  ollama-amd:
+    # AMD/ROCm precisa desta imagem
+    image: ollama/ollama:rocm
+    container_name: ollama
+    profiles: ["amd"]
+    environment:
+      - OLLAMA_FORCE_CPU=false
+    ports: ["11434:11434"]
+    volumes:
+      - ollama_data:/root/.ollama
+    devices:
+      - /dev/kfd
+      - /dev/dri
+    group_add:
+      - "video"
+    ipc: host
+    restart: always
 
 volumes:
   esdata:
