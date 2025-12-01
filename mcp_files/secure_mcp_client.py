@@ -42,9 +42,9 @@ def mcp_client_init():
         else f"http://localhost:{server_url}/sse"
     )
 
-    print("🚀 Simple MCP Auth Client")
-    print(f"Connecting to: {server_url}")
-    print(f"Transport type: {transport_type}")
+    # print("🚀 Simple MCP Auth Client")
+    # print(f"Connecting to: {server_url}")
+    # print(f"Transport type: {transport_type}")
 
     # Start connection flow - OAuth will be handled automatically
     mcp_client = SimpleAuthClient(server_url, transport_type)
@@ -81,7 +81,7 @@ class InMemoryTokenStorage(TokenStorage):
         return self._tokens
 
     async def set_tokens(self, tokens: OAuthToken) -> None:
-        print(f"\n\n[DEBUG] TOKEN SET TO {tokens}")
+        # print(f"\n\n[DEBUG] TOKEN SET TO {tokens}")
         self._tokens = tokens
 
     async def get_client_info(self) -> OAuthClientInformationFull | None:
@@ -129,18 +129,18 @@ class SimpleAuthClient:
                     timeout=timedelta(seconds=60),
                 ) as (read_stream, write_stream, get_session_id):
                     """Run the MCP session with the given streams."""
-                    print("🤝 Initializing MCP session...")
+                    # print("🤝 Initializing MCP session...")
                     async with ClientSession(read_stream, write_stream) as mcp_session:
                         # self.session = session
-                        print("⚡ Starting session initialization...")
+                        # print("⚡ Starting session initialization...")
                         await mcp_session.initialize()
                         print("✨ Session initialization complete!")
 
-                        print(f"\n✅ Connected to MCP server at {self.server_url}")
+                        print(f"✅ Connected to MCP server at {self.server_url}")
                         if get_session_id:
                             session_id = get_session_id()
                             if session_id:
-                                print(f"Session ID: {session_id}")
+                                # print(f"Session ID: {session_id}")
                                 result = await func(self, mcp_session, *args, **kwargs)
             except Exception as e:
                 print(f"[MCP] [ERROR] Connection error: {e}")
@@ -148,7 +148,7 @@ class SimpleAuthClient:
                 traceback.print_exc()
             
             finally:
-                print("[MCP] Connection closed.")
+                # print("[MCP] Connection closed.")
                 return result
         
         return _connect
@@ -157,7 +157,6 @@ class SimpleAuthClient:
         """Wait for OAuth callback with timeout."""
         start_time = time.time()
         while time.time() - start_time < timeout:
-            print(".", end="")
             if self.role_data[role]["callback_data"]["authorization_code"]:
 
                 # print("GOT THE AUTHORIZATION CODE: ", end="")
@@ -166,7 +165,7 @@ class SimpleAuthClient:
 
             elif self.role_data[role]["callback_data"]["error"]:
 
-                print("GOT THE ERROR", end="")
+                # print("GOT THE ERROR", end="")
                 raise Exception(f"OAuth error: {self.role_data[role]['callback_data']['error']}")
             
             time.sleep(0.1)
@@ -180,7 +179,7 @@ class SimpleAuthClient:
 
             async def callback_handler() -> tuple[str, str | None]:
                 """Wait for OAuth callback and return auth code and state."""
-                print("⏳ Waiting for authorization callback...")
+                # print("⏳ Waiting for authorization callback...")
 
                 auth_code = self.wait_for_callback(role=role, timeout=15)
                 return auth_code, self.role_data[role]["callback_data"]["state"]
@@ -227,7 +226,7 @@ class SimpleAuthClient:
                             print("⚠️ No Location header on AS redirect.")
                 except Exception as e:
                     print(f"❌ Error occurred while handling redirect: {e}")
-                    print("Trying to reconnect...")
+                    # print("Trying to reconnect...")
 
             return OAuthClientProvider(
                 server_url=self.server_url.replace("/mcp", ""),
@@ -244,14 +243,12 @@ class SimpleAuthClient:
     @with_session
     async def _list_tools(self, mcp_session):
         tools = await mcp_session.list_tools()
-        print(f"\n\nDEBUG: {tools}")
-        return "Listed tools."
+        # print(f"\n\nDEBUG: {tools}")
+        return tools
 
     @with_session
     async def call_greet_tool(self, mcp_session, name: str, role: str = "user"):
-
-        user = getattr(current_user, "username", None)
-        print(f"[DEBUG_JOAO]: the user {user} is calling greet tool with role {role}")
+        print("[INFO] [MCP SERVER] Calling greet tool...")
         tool_response = await mcp_session.call_tool("greet", {"name": name})
         return tool_response.content[0].text
 
@@ -267,7 +264,7 @@ class SimpleAuthClient:
         Versão com recurso a tools de MCP
         Envia pergunta para o LLM com tools do server MCP.
         """
-        print("[INFO] [MCP SERVER] Starting RAG query with MCP tools...")
+        print("[INFO] [MCP SERVER] Starting RAG query with MCP tools.")
         # Pergunta efetiva a usar no RAG (se question vier vazio, tenta última do user)
         def _last_user_question(msgs):
             if not isinstance(msgs, list):
@@ -321,7 +318,7 @@ class SimpleAuthClient:
             tools=olama_tools,
         )
 
-        print(f"Ollama response: {response.message.content}")
+        # print(f"Ollama response: {response.message.content}")
 
         # combined_messages.append({"role": response.message.role, "content": response.message.content, "thinking": response.message.thinking})
         # A cada tool chamada, invoca-se o MCP para obter o seu resultado

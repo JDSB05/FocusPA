@@ -6,10 +6,10 @@ def oauth_callback(role: str):
     method = request.method
     query_params = request.args
 
-    print(f"[OAUTH] Received {method} request on /callback/{role} with params:")
-    for key, value in query_params.items():
-        print(f"  {key}: {value}")
-    print()
+    # print(f"[OAUTH] Received {method} request on /callback/{role} with params:")
+    # for key, value in query_params.items():
+    #     print(f"  {key}: {value}")
+    # print()
 
     if method == "GET":
         mcp_client.role_data[role]["callback_data"]["authorization_code"] = query_params["code"]

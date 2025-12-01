@@ -58,8 +58,8 @@ async def rag_query():
         # !!! TODO: Substituir isto por algo mais seguro !!!
 
         # ! Test scopes
-        # response = await mcp_client.call_greet_tool(name="FocusPA", role=role)
-        response = await mcp_client.query_rag_with_mcp_tools(question=question, messages=messages)
+        response = await mcp_client.call_greet_tool(name="FocusPA", role=role)
+        # response = await mcp_client.query_rag_with_mcp_tools(question=question, messages=messages)
         print(response)
 
 
