@@ -23,6 +23,7 @@ from .routes import (
     accesslog_bp,
     rag_bp,
     log_bp,
+    mcp_auth_bp,
 )
 from .model import Anomaly, User, create_test_anomalies, create_investigation
 from dotenv import load_dotenv
@@ -75,6 +76,10 @@ def create_app(config_class: type = Config) -> Flask:
     app.register_blueprint(accesslog_bp)
     app.register_blueprint(rag_bp)
     app.register_blueprint(log_bp)
+    app.register_blueprint(mcp_auth_bp)
+
+    # from app.controllers.auth_mcp_controller import mcp_auth_bp
+    # app.register_blueprint(mcp_auth_bp)
 
     # Cria tabelas se não existirem
     with app.app_context():

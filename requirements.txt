@@ -14,3 +14,4 @@ apscheduler
 ollama
 tiktoken
 mcp
+flask[async]

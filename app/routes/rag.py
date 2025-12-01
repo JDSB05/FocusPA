@@ -3,9 +3,15 @@ from flask_login import login_required
 import time
 
 
-from mcp import ClientSession
+from app.extensions import mcp_client
 from mcp.client.streamable_http import streamablehttp_client
 from mcp import ClientSession as MCPClientSession
+from flask_login import current_user
+
+# import sys
+# sys.path.insert(0, "../../mcp_files")
+# from mcp_files.secure_mcp_client import SimpleAuthClient
+# import mcp_files
 
 
 # mantém o nome do módulo/func principal já usado noutros pontos
@@ -21,6 +27,11 @@ rag_bp = Blueprint("rag", __name__)
 
 # ? ===== Versao com tools MCP ===== ? #
 
+def _fake_role_from_user() -> str:
+    if getattr(current_user, "is_authenticated", False) and getattr(current_user, "username", None) != "user":
+        return "admin"
+    return "user"
+
 @rag_bp.route("/rag", methods=["POST"])
 @login_required
 async def rag_query():
@@ -33,42 +44,27 @@ async def rag_query():
     if not question and not (isinstance(messages, list) and len(messages) > 0):
         return jsonify({"error": "Missing 'question' or 'messages'"}), 400
 
-   
-    async def generate(mcp_session: MCPClientSession | None = None):
-
-        start_time = time.time()
-        try:
-            response = await query_rag_with_mcp_tools(
-                question=question,
-                messages=messages,
-                max_es_logs=max_es_logs,
-                max_chroma_chunks=max_chroma_chunks,
-                mcp_session=mcp_session,
-            )
-
-        except Exception as e:
-            return f"\n\n[erro] {e}\n"
-        finally:
-            duration = time.time() - start_time
-            print(f"[INFO] [LLM] Tempo de resposta (stream): {duration:.2f} segundos")
-
-        return response
-
     headers = {
         "Cache-Control": "no-cache",
         "X-Accel-Buffering": "no",
         "Content-Type": "text/plain; charset=utf-8",
     }
 
+    response = None
     try:
-        async with streamablehttp_client("http://localhost:9400/mcp") as (read_stream, write_stream, _):
-            async with MCPClientSession(read_stream, write_stream) as session:
-                await session.initialize()
-                response = await generate(mcp_session=session)
+
+        # !!! TODO: Substituir isto por algo mais seguro !!!
+        role = _fake_role_from_user()
+        # !!! TODO: Substituir isto por algo mais seguro !!!
+
+        # ! Test scopes
+        # response = await mcp_client.call_greet_tool(name="FocusPA", role=role)
+        response = await mcp_client.query_rag_with_mcp_tools(question=question, messages=messages)
+        print(response)
+
 
     except Exception as e:
-        print(f"\033[93m[ERROR] [MCP SERVER] MCP session initialization failed: {e}\033[0m")
-        response = await generate(mcp_session=None)
+        return jsonify({"error": str(e)}), 500
 
     return Response(response, headers=headers)
 

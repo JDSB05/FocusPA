@@ -8,3 +8,4 @@ chroma_db/
 uploads/
 app/policy.json
 metrics/llm_metrics.csv
+mcp_files/__pycache__/
