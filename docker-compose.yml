@@ -1,4 +1,3 @@
-
 services:
   chromadb:
     image: chromadb/chroma:latest
@@ -48,35 +47,16 @@ services:
       - pgdata:/var/lib/postgresql/data
     restart: always
 
-  # ollama:
-  #   image: ollama/ollama:latest
-  #   container_name: ollama
-  #   environment:
-  #     - OLLAMA_FORCE_CPU=${OLLAMA_FORCE_CPU}
-  #   # GPU config opcional (só funciona se Docker tiver suporte)
-  #   runtime: ${GPU_RUNTIME}
-  #   ports:
-  #     - "11434:11434"
-  #   volumes:
-  #     - ollama_data:/root/.ollama
-  #   restart: always
   ollama:
-       image: ollama/ollama:latest
-       container_name: ollama
-       deploy:
-         resources:
-           reservations:
-             devices:
-               - driver: nvidia
-                 count: 1
-                 capabilities: [gpu]
-       environment:
-         - OLLAMA_FORCE_CPU=false
-       ports:
-         - "11434:11434"
-       volumes:
-         - ollama_data:/root/.ollama
-       restart: always
+    image: ollama/ollama:latest
+    container_name: ollama
+    environment:
+      - OLLAMA_FORCE_CPU=true
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    restart: always
 
 volumes:
   esdata:

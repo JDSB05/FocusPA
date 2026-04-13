@@ -185,9 +185,9 @@ def create_investigation(title, description, anomaly_ids, responsible_id=None):
         raise ValueError("Nenhuma anomalia encontrada para os IDs fornecidos.")
 
     investigation = Investigation(
-        title=title,
-        description=description,
-        responsible_id=responsible_id
+        title=title, # type: ignore
+        description=description, # type: ignore
+        responsible_id=responsible_id # type: ignore
     )
 
     # associar as anomalias à investigação

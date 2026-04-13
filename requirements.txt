@@ -14,3 +14,7 @@ apscheduler
 ollama
 tiktoken
 mcp
+pandas
+joblib
+sentence-transformers
+scikit-learn

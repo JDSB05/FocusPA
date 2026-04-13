@@ -186,21 +186,40 @@ def _build_context_payload(logs: list) -> dict:
 
 def _build_prompt(question: str, context_payload: dict) -> Tuple[str, str]:
     context_text = json.dumps(context_payload, indent=2, ensure_ascii=False)
-    prompt = f"""Contexto (logs e políticas relevantes, tens de responder baseando-te nas políticas fornecidas, as políticas estão depois dos logs):
+    prompt = f"""Contexto (logs e políticas relevantes, tens de responder baseando-te nas políticas fornecidas; as políticas estão depois dos logs):
 {context_text}
 
 Tarefa:
-Analisa os logs fornecidos aplicando rigorosamente as regras descritas em policy.rules.
-Responde exclusivamente em JSON **válido** com a seguinte estrutura (sem texto antes ou depois):
-{{
+Depois da marca «Contexto» surgem os logs e a política em formato JSON. Baseia-te exclusivamente nessas políticas. Não uses regras externas.
+
+Para cada registo, aplica rigorosamente as regras de policy.rules:
+
+ENUM-SPAM:
+- Conta quantos eventos com event.code = 5379 ocorrem para o mesmo utilizador e alvo numa janela móvel de 10 minutos.
+- Se o total exceder 5 → is_anomaly = true.
+- Caso contrário → is_anomaly = false.
+
+CRYPTO-NORMAL:
+- Para event.code = 5061 com ReturnCode = "0x0", considera operação legítima.
+- is_anomaly = false.
+
+Para outros códigos, segue apenas o que estiver definido em policy.rules.
+
+Formato da resposta (JSON **válido**, sem qualquer texto fora do JSON):
+{
   "evaluations": [
-    {{"_id": "<_id do log>", "is_anomaly": true|false, "reason": "Resumo técnico muito curto"}}
+    {"_id": "<id do log>", "is_anomaly": true, "reason": "Regra aplicada e justificação técnica"}
   ],
-  "summary": "Resumo técnico muito curto"
-}}
-Garante que devolves uma entrada na lista "evaluations" para cada log recebido e que "is_anomaly" é sempre um booleano.
-Se não conseguires cumprir algum requisito, responde com JSON válido no formato {{"evaluations": [], "summary": "formato inválido"}}.
-Não acrescentes qualquer texto fora do JSON.
+  "summary": "Síntese técnica das anomalias detetadas ou ausência delas."
+}
+
+Regras adicionais:
+- Uma entrada em "evaluations" por cada log.
+- is_anomaly deve ser sempre booleano (true/false).
+- Se os logs estiverem mal formatados ou não conseguires cumprir algum requisito:
+  {"evaluations": [], "summary": "formato inválido"}
+
+Não incluas conteúdo dos logs nem das políticas na resposta.
 Hoje é {datetime.utcnow().isoformat()}Z.
 
 Pergunta original:
