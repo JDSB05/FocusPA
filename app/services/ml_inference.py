@@ -24,6 +24,7 @@ class AlphaDetector:
         if os.path.exists(model_path):
             self.svm_model = joblib.load(model_path)
             logger.info("[ML Inference] Modelo SVM carregado com sucesso.")
+            print("[ML Inference] Modelo SVM carregado com sucesso.")
         else:
             self.svm_model = None
             logger.warning("[ML Inference] Modelo SVM não encontrado. Treino offline necessário.")

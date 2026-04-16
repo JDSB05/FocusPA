@@ -9,7 +9,7 @@ from apscheduler.schedulers.background import BackgroundScheduler
 
 from app.controllers.rag_controller import ask_llm, ask_llm_stream, delete_think_stream
 from app.utils.others import ensure_model
-from .services.anomaly_service import detect_and_create_anomalies
+#from .services.anomaly_service import testar_causalidade
 from .services.elastic import create_fake_winlogs
 from .config import Config
 from .extensions import db, login_manager, migrate
@@ -111,7 +111,8 @@ def create_app(config_class: type = Config) -> Flask:
     # Envolve a chamada no app_context para não perder o contexto
     def job_wrapper():
         with app.app_context():
-            detect_and_create_anomalies()
+            #detect_and_create_anomalies()
+            pass # Placeholder para a função real
 
     # scheduler.add_job(job_wrapper, 'interval', minutes=5, id='detect_anomalies', replace_existing=False, max_instances=1, next_run_time=datetime.now() + timedelta(seconds=10))
     # scheduler.start() # Descomente para ativar o scheduler
