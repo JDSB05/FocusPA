@@ -16,7 +16,7 @@ sns.set_theme(style="whitegrid")
 # ---------------------------------------------------------
 plt.figure(figsize=(8, 5))
 sns.scatterplot(data=grouped, x='duration_seconds', y='tokens_per_second', hue='model', style='light_model', s=150)
-plt.xlabel('Average Duration (seconds)')
+plt.xlabel('Duration (seconds)')
 plt.ylabel('Average Throughput (tokens/second)')
 plt.title('Latency vs. Throughput by Model Pairing')
 plt.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
